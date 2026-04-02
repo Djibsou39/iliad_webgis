@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   height="29.624001"
+   width="29.617996"
+   viewBox="0 0 29.617997 29.624001"
+   version="1.1"
+   id="svg42"
+   sodipodi:docname="drawing-tools.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview42"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1">
+    <inkscape:page
+       x="0"
+       y="0"
+       width="29.617996"
+       height="29.624001"
+       id="page2"
+       margin="0"
+       bleed="0" />
+  </sodipodi:namedview>
+  <defs
+     id="defs2" />
+  <path
+     d="m 2.2380009,27.338 5,-15 15.0000001,10 5,-20.0000002"
+     stroke="#00b798"
+     stroke-width="2"
+     fill="none"
+     id="path3" />
+  <g
+     fill-rule="evenodd"
+     stroke="#e9edf0"
+     stroke-width="1.5"
+     fill="#00b798"
+     id="g4"
+     transform="translate(-85.191999,-5.1880002)">
+    <path
+       d="m 85.942,30.062 v 4 h 4 v -4 z m 4.823,-14.116 v 4 h 4 v -4 z m 14.525,9.172 v 4 h 4 v -4 z m 4.77,-19.18 v 4 h 4 v -4 z"
+       id="path4" />
+  </g>
+</svg>

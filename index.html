@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <link
+      rel="icon"
+      type="image/x-icon"
+      href="https://openlayers.org/favicon.ico"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wdth,wght@75..100,100..900&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="./style.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Iliad | Visualisation des opérations archéologiques | Inrap</title>
+    <link rel="stylesheet" href="node_modules/ol/ol.css" />
+    <link rel="stylesheet" href="node_modules/ol-ext/dist/ol-ext.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "ol": "./node_modules/ol/index.js",
+          "ol/": "./node_modules/ol/",
+          "ol-ext/": "./node_modules/ol-ext/",
+          "proj4": "./node_modules/proj4/dist/proj4.js",
+          "color-space/": "./node_modules/color-space/",
+          "color-rgba/": "./node_modules/color-rgba/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="app-container">
+      <div class="sidebar-panel left" id="sidebar-panel">
+        <div class="sidebar-toolbar">
+          <button class="toolbar-icon" data-panel="aide" title="Aide">
+            <img src="/symbols/question.png" alt="aide" />
+          </button>
+
+          <button
+            class="toolbar-icon"
+            data-panel="couches"
+            title="Gestion des couches"
+          >
+            <img src="/symbols/layers.png" alt="couches" />
+          </button>
+
+          <button
+            class="toolbar-icon"
+            data-panel="lieu"
+            title="Rechercher un lieu"
+          >
+            <img src="/symbols/lieu.png" alt="lieu" />
+          </button>
+
+          <button
+            class="toolbar-icon"
+            data-panel="recherche"
+            title="Rechercher une opération"
+          >
+            <img src="/symbols/search-find.png" alt="recherche" />
+          </button>
+
+          <button
+            class="toolbar-icon"
+            data-panel="edition"
+            title="Numérisation"
+          >
+            <img src="/symbols/edit_tool.png" alt="edition" />
+          </button>
+
+          <button
+            class="toolbar-icon"
+            data-panel="selection"
+            title="Fenêtre contextuelle"
+          >
+            <img src="/symbols/export_file.png" alt="selection" />
+          </button>
+
+          <div class="logo-inrap">
+            <img src="/symbols/inrap_caviar_iliad.png" alt="logo-inrap" />
+          </div>
+        </div>
+
+        <div class="sidebar-content" id="sidebar-content">
+          <button
+            class="close-panel-btn"
+            id="close-panel-btn"
+            title="Fermer le panneau"
+          >
+            <span>x</span>
+          </button>
+
+          <div class="content-panel" data-panel-content="aide">
+            <h3 class="panel-header">📖 Guide d'utilisation</h3>
+            <div class="panel-body">
+              <div class="help-section">
+                <h4>🎯 Fonctionnalités principales</h4>
+                <ul>
+                  <li>
+                    <strong>🔍 Recherche :</strong> Formulaire de recherche
+                    multicritère sur les opérations archéologiques <br />
+                    💡Appuyez sur la <strong>⌨️ barre d’espace</strong> pour
+                    voir la <strong>📋 liste déroulante</strong> de certaines
+                    entrées du formulaire
+                  </li>
+                  <li>
+                    <strong>🆔 Identifier :</strong> Cliquer sur une emprise
+                    pour afficher les informations
+                  </li>
+                  <li>
+                    <strong>🖊️ Numérisation :</strong> Dessinez des polygones et
+                    lignes
+                  </li>
+                  <li>
+                    <strong>📏 Mesure :</strong> Calcul automatique des surfaces
+                    et longueurs des objets dessinés
+                  </li>
+                  <li>
+                    <strong>📍 Lieu :</strong> Rechercher et localiser un lieu
+                  </li>
+                  <li>
+                    <strong>📤 Export :</strong> Exporter une emprise au format
+                    KML
+                  </li>
+                  <li>
+                    <strong>🗺️ Projection :</strong> Choisir la projection
+                    cartographique afin d’afficher les coordonnées adaptées au
+                    territoire couvert par l’emprise de la carte
+                  </li>
+                </ul>
+              </div>
+              <div class="help-section">
+                <h4>💡 Astuces</h4>
+                <ul>
+                  <li>Double-cliquez pour terminer une forme</li>
+                  <li>Vous pouvez modifier les formes après création</li>
+                  <li>
+                    Appuyez sur la touche <strong>Échap</strong> pour fermer le
+                    panneau
+                  </li>
+                </ul>
+              </div>
+              <div class="help-section">
+                <h4>🗄️ Données</h4>
+                <ul>
+                  <li>Fonds de carte de la Géoplateforme</li>
+                  <li>Zones Natura 2000 à risques et pollués</li>
+                  <li>Données Inrap issues de Caviar et du SGA</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-panel" data-panel-content="recherche">
+            <h3 class="panel-header">Recherche multicritère</h3>
+            <div class="panel-body">
+              <form class="frm-recherche">
+                <div class="form-group">
+                  <label for="region">Région</label>
+                  <input list="listeRegion" id="region" name="nom_reg" />
+                  <datalist id="listeRegion"></datalist>
+                </div>
+
+                <div class="form-group">
+                  <label for="departement">Département</label>
+                  <input
+                    list="listeDepartement"
+                    id="departement"
+                    name="code_dept"
+                  />
+                  <datalist id="listeDepartement"></datalist>
+                </div>
+
+                <div class="form-group">
+                  <label for="commune">Commune</label>
+                  <input list="listeCommunes" id="commune" name="nom_com" />
+                  <datalist id="listeCommunes"></datalist>
+                </div>
+
+
+                <div class="form-group">
+                  <label for="date-debut-terrain">Date début</label>
+                  <input
+                    type="text"
+                    id="date-debut-terrain"
+                    name="date_deb_t"
+                    placeholder="aaaa-mm-jj"
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label for="date-fin-terrain">Date fin</label>
+                  <input
+                    type="text"
+                    id="date-fin-terrain"
+                    name="date_fin_t"
+                    placeholder="aaaa-mm-jj"
+                  />
+                </div>
+
+                <div class="form-group">
+                  <label for="code-tranche">Code tranche</label>
+                  <input
+                    list="listeCodeTranche"
+                    id="code-tranche"
+                    name="code_tranc"
+                    autocomplete="off"
+                  />
+                  <datalist id="listeCodeTranche"></datalist>
+                </div>
+
+                <div class="form-group">
+                  <label for="ro">Responsable</label>
+                  <input list="listeRo" id="ro" name="ro" autocomplete="off" />
+                  <datalist id="listeRo"></datalist>
+                </div>
+
+                <div class="form-group">
+                  <label for="type-operation">Type d'opération</label>
+                  <input
+                    list="listeTypeOperation"
+                    id="type-operation"
+                    name="typope"
+                  />
+                  <datalist id="listeTypeOperation">
+                    <option value="Diagnostic"></option>
+                    <option value="Fouilles"></option>
+                    <option value="Prestations"></option>
+                    <option value="Recherches"></option>
+                    <option value="Surveillance"></option>
+                  </datalist>
+                </div>
+
+                <div class="form-group">
+                  <label for="statut-operationnel">Statut opération</label>
+                  <input
+                    list="listeStatutOperation"
+                    id="statut-operationnel"
+                    name="statut_ope"
+                  />
+                  <datalist id="listeStatutOperation">
+                    <option value="Opération Planifiée"></option>
+                    <option value="Opération en cours Terrain"></option>
+                    <option value="Opération en cours Étude"></option>
+                    <option value="Rapport Rendu"></option>
+                    <option value="Stock Actif"></option>
+                    <option value="Terminé"></option>
+                  </datalist>
+                </div>
+
+                <div class="form-group">
+                  <label for="statut-contractuel">Statut contractuel</label>
+                  <input
+                    list="listeStatutContractuel"
+                    id="statut-contractuel"
+                    name="statut_con"
+                  />
+                  <datalist id="listeStatutContractuel">
+                    <option value="Convention en cours de signature"></option>
+                    <option value="Devis Prestation Envoyé"></option>
+                    <option value="Opération abandonnée"></option>
+                    <option value="Opération Abrogés par arrêté"></option>
+                    <option value="Opération attribuée à un Tiers"></option>
+                    <option value="Prescrit Avec Engagement"></option>
+                    <option
+                      value="Prescrit Avec Engagement avec Accord de l'Aménageur"
+                    ></option>
+                    <option
+                      value="Prescrit Avec Engagement en Négociation avec l'Aménageur"
+                    ></option>
+                    <option
+                      value="Prescrit Avec Engagement Sans réponse de l'Aménageur"
+                    ></option>
+                    <option
+                      value="Prescrit Avec réponse de l'Aménageur"
+                    ></option>
+                    <option value="Prescrit Sans Engagement"></option>
+                    <option
+                      value="Prescrit Sans réponse de l'Aménageur"
+                    ></option>
+                    <option value="Prévu"></option>
+                    <option value="Signé"></option>
+                    <option value="Terminé"></option>
+                  </datalist>
+                </div>
+
+                <div class="form-group">
+                  <label for="operateur">Opérateur</label>
+                  <input
+                    list="listeOperateur"
+                    id="operateur"
+                    name="operateur"
+                  />
+                  <datalist id="listeOperateur"></datalist>
+                </div>
+
+                <div class="form-actions">
+                  <button type="submit" class="btn-primary">Chercher</button>
+                  <input type="reset" class="btn-secondary" value="Effacer" />
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="content-panel" data-panel-content="edition">
+            <h3 class="panel-header">Numérisation</h3>
+            <div class="panel-body num-panel-body">
+              <!-- ── 1. OUTILS DE DESSIN ──────────────────────────────── -->
+              <div class="num-section">
+                <div class="num-section-title">
+                  <i class="fa-solid fa-draw-polygon"></i> Outils
+                </div>
+                <div class="num-tools-grid">
+                  <button
+                    class="num-tool num-tool-polygon"
+                    title="Dessiner un polygone"
+                  >
+                    <img src="/symbols/polygon.svg" alt="polygone" />
+                    <span>Polygone</span>
+                  </button>
+
+                  <button
+                    class="num-tool num-tool-line"
+                    title="Dessiner une ligne"
+                  >
+                    <img src="/symbols/line.svg" alt="ligne" />
+                    <span>Ligne</span>
+                  </button>
+
+                  <button
+                    class="num-tool num-tool-point"
+                    title="Placer un point"
+                  >
+                    <img src="/symbols/point.svg" alt="point" />
+                    <span>Point</span>
+                  </button>
+
+                  <button
+                    class="num-tool num-tool-texte"
+                    title="Ajouter un texte"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="20"
+                      height="20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    >
+                      <path d="M4 7V4h16v3" />
+                      <path d="M9 20h6" />
+                      <path d="M12 4v16" />
+                    </svg>
+                    <span>Texte</span>
+                  </button>
+
+                  <button
+                    class="num-tool num-tool-hole"
+                    title="Percer un trou dans un polygone"
+                  >
+                    <svg viewBox="0 0 44 44" width="28" height="28">
+                      <polygon fill="#8cd7cd" points="8,35 36,38 30,7 12,11" />
+                      <polygon
+                        fill="rgba(255,255,255,0.55)"
+                        stroke="#00b798"
+                        stroke-width="2"
+                        points="15,30 28,31 25,14 17,16"
+                      />
+                    </svg>
+                    <span>Trou</span>
+                  </button>
+
+                  <button
+                    class="num-tool num-tool-modify"
+                    title="Modifier une géométrie"
+                  >
+                    <img src="/symbols/modify.png" alt="modifier" />
+                    <span>Éditer</span>
+                  </button>
+
+                  <button
+                    class="num-tool num-tool-delete"
+                    title="Supprimer une géométrie"
+                  >
+                    <img src="/symbols/cross.svg" alt="supprimer" />
+                    <span>Effacer</span>
+                  </button>
+                </div>
+                <!-- /num-tools-grid -->
+              </div>
+              <!-- /section outils -->
+
+              <!-- ── 2. MESSAGE CONTEXTUEL ────────────────────────────── -->
+              <div class="num-info">
+                <p class="num-info-text">
+                  <i
+                    class="fa-solid fa-hand-pointer"
+                    style="margin-right: 5px; opacity: 0.6"
+                  ></i>
+                  Sélectionnez un outil pour commencer.
+                </p>
+              </div>
+
+              <!-- ── 3. STYLE DE DESSIN ────────────────────────────────── -->
+              <div class="num-section num-section-collapsible">
+                <button
+                  type="button"
+                  class="num-section-title num-collapse-btn"
+                  data-target="num-style-body"
+                  aria-expanded="false"
+                >
+                  <i class="fa-solid fa-palette"></i> Style
+                  <i class="fa-solid fa-chevron-down num-chevron"></i>
+                </button>
+                <div class="num-section-body" id="num-style-body">
+                  <div class="num-style-row">
+                    <label for="num-stroke-color">
+                      <i class="fa-solid fa-pen-nib"></i> Contour
+                    </label>
+                    <input type="color" id="num-stroke-color" value="#e63946" />
+                  </div>
+
+                  <div class="num-style-row">
+                    <label for="num-fill-color">
+                      <i class="fa-solid fa-fill-drip"></i> Remplissage
+                    </label>
+                    <input type="color" id="num-fill-color" value="#e63946" />
+                  </div>
+
+                  <div class="num-style-row num-style-row--range">
+                    <label for="num-fill-opacity">
+                      <i class="fa-solid fa-droplet"></i> Opacité remplissage
+                    </label>
+                    <div class="num-range-wrap">
+                      <input
+                        type="range"
+                        id="num-fill-opacity"
+                        min="0"
+                        max="100"
+                        value="25"
+                        step="5"
+                      />
+                      <span id="num-fill-opacity-val" class="num-range-val"
+                        >25%</span
+                      >
+                    </div>
+                  </div>
+
+                  <div class="num-style-row num-style-row--range">
+                    <label for="num-stroke-width">
+                      <i class="fa-solid fa-minus"></i> Épaisseur trait
+                    </label>
+                    <div class="num-range-wrap">
+                      <input
+                        type="range"
+                        id="num-stroke-width"
+                        min="1"
+                        max="10"
+                        value="2"
+                        step="1"
+                      />
+                      <span id="num-stroke-width-val" class="num-range-val"
+                        >2 px</span
+                      >
+                    </div>
+                  </div>
+                </div>
+                <!-- /num-style-body -->
+              </div>
+              <!-- /section style -->
+
+              <!-- ── 4. IMPORT ────────────────────────────────────────── -->
+              <div class="num-section num-section-collapsible">
+                <button
+                  type="button"
+                  class="num-section-title num-collapse-btn"
+                  data-target="num-import-body"
+                  aria-expanded="false"
+                >
+                  <i class="fa-solid fa-file-import"></i> Importer
+                  <i class="fa-solid fa-chevron-down num-chevron"></i>
+                </button>
+                <div class="num-section-body" id="num-import-body">
+                  <div
+                    id="num-drop-zone"
+                    class="num-drop-zone"
+                    tabindex="0"
+                    role="button"
+                    aria-label="Zone d'import KML ou GeoJSON"
+                  >
+                    <i class="fa-solid fa-cloud-arrow-up num-drop-icon"></i>
+                    <span
+                      >Glissez un fichier <strong>KML</strong> ou
+                      <strong>GeoJSON</strong><br />
+                      ou cliquez pour choisir</span
+                    >
+                  </div>
+                  <input
+                    type="file"
+                    id="num-import-file"
+                    accept=".kml,.geojson,.json"
+                    style="display: none"
+                  />
+                </div>
+              </div>
+
+              <!-- ── 5. EXPORT ────────────────────────────────────────── -->
+              <div class="num-section num-section-collapsible">
+                <button
+                  type="button"
+                  class="num-section-title num-collapse-btn"
+                  data-target="num-export-body"
+                  aria-expanded="false"
+                >
+                  <i class="fa-solid fa-file-export"></i> Exporter
+                  <i class="fa-solid fa-chevron-down num-chevron"></i>
+                </button>
+                <div class="num-section-body" id="num-export-body">
+                  <div class="num-export-btns">
+                    <button
+                      id="num-btn-export-kml"
+                      class="num-export-btn"
+                      title="Exporter en KML"
+                    >
+                      <i class="fa-solid fa-map"></i> KML
+                    </button>
+                    <button
+                      id="num-btn-export-gj"
+                      class="num-export-btn"
+                      title="Exporter en GeoJSON"
+                    >
+                      <i class="fa-solid fa-code"></i> GeoJSON
+                    </button>
+                  </div>
+                  <button
+                    id="num-btn-clear"
+                    class="num-btn-danger"
+                    title="Supprimer tous les objets numérisés"
+                  >
+                    <i class="fa-solid fa-trash"></i> Tout effacer
+                  </button>
+                </div>
+              </div>
+            </div>
+            <!-- /panel-body -->
+          </div>
+          <!-- /content-panel edition -->
+
+          <div class="content-panel" data-panel-content="lieu">
+            <h3 class="panel-header">Recherche de lieu</h3>
+            <div class="panel-body">
+              <div class="geocodage-container">
+                <form class="geocodage">
+                  <input
+                    type="text"
+                    name="adresse"
+                    id="id_adresse"
+                    placeholder="Entrez une adresse..."
+                  />
+                  <button type="submit" title="Rechercher">
+                    <img
+                      src="/symbols/bouton-rechercher.png"
+                      class="bouton-geocodage"
+                      alt="rechercher"
+                    />
+                  </button>
+                </form>
+                <div class="resultat-geocodage"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-panel" data-panel-content="couches">
+            <h3 class="panel-header">Gestion des couches</h3>
+
+            <!-- Onglets -->
+            <div class="couches-tabs">
+              <button class="couches-tab active" data-tab="tab-couches">
+                <i class="fa-solid fa-layer-group"></i> Couches
+              </button>
+              <button class="couches-tab" data-tab="tab-legende">
+                <i class="fa-solid fa-list"></i> Légende
+              </button>
+            </div>
+
+            <!-- Contenu onglet Couches -->
+            <div class="couches-tab-content active" id="tab-couches">
+              <div class="panel-body">
+                <div
+                  id="custom-layer-switcher"
+                  class="custom-layer-switcher"
+                ></div>
+              </div>
+            </div>
+
+            <!-- Contenu onglet Légende -->
+            <div class="couches-tab-content" id="tab-legende">
+              <div class="panel-body">
+                <div id="legend-container" class="legend-container">
+                  <div class="legend-content">
+                    <p class="legend-empty">
+                      Aucune couche active pour l'instant.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-panel" data-panel-content="selection">
+            <h3 class="panel-header">Fenêtre contextuelle</h3>
+            <div class="panel-body">
+              <div class="popup" id="popup">
+                <p class="popup-placeholder">
+                  Cliquez sur une emprise pour afficher ses informations
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- ── Modale saisie texte (outil Texte numérisation) ──────────────────── -->
+      <div
+        id="num-modal-texte"
+        class="num-modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="num-modal-titre"
+      >
+        <div class="num-modal">
+          <h4 id="num-modal-titre" class="num-modal-titre">
+            <i class="fa-solid fa-font"></i> Ajouter un texte
+          </h4>
+          <input
+            type="text"
+            id="num-modal-input"
+            class="num-modal-input"
+            placeholder="Saisissez votre texte…"
+            maxlength="120"
+            autocomplete="off"
+          />
+          <div class="num-modal-actions">
+            <button id="num-modal-ok" class="num-modal-btn num-modal-btn--ok">
+              <i class="fa-solid fa-check"></i> Valider
+            </button>
+            <button
+              id="num-modal-cancel"
+              class="num-modal-btn num-modal-btn--cancel"
+            >
+              <i class="fa-solid fa-xmark"></i> Annuler
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Conteneur de la carte -->
+      <div class="map-container" id="map-container">
+        <div class="map-zoom-controls">
+          <button class="zoom-btn zoom-in" id="zoom-in" title="Zoomer">
+            +
+          </button>
+          <button class="zoom-btn zoom-out" id="zoom-out" title="Dézoomer">
+            −
+          </button>
+        </div>
+        <div id="map"></div>
+      </div>
+
+      <!-- Panneau tableau des résultats de recherche -->
+      <div id="tableau-resultats" class="tableau-resultats hidden">
+        <div class="tableau-resultats-header">
+          <span class="tableau-resultats-titre">Résultats de recherche</span>
+          <span
+            class="tableau-resultats-count"
+            id="tableau-resultats-count"
+          ></span>
+          <button
+            class="tableau-resultats-fermer"
+            id="btn-fermer-tableau"
+            title="Fermer"
+          >
+            ✕
+          </button>
+        </div>
+        <div class="tableau-resultats-body">
+          <div id="tableau-resultats-contenu"></div>
+        </div>
+      </div>
+
+      <footer class="app-footer">
+        <div class="footer-content">
+          <div class="echelle-container">
+            <span class="echelle-label">Échelle :</span>
+            <select class="echelle-select" id="echelle-select"></select>
+          </div>
+
+          <div class="coordonnees-container">
+            <div class="projection-selector">
+              <select class="projection" id="projection-select"></select>
+            </div>
+            <div class="affichage-coordonnee"></div>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+    <script type="module" src="./menu.js"></script>
+  </body>
+</html>

@@ -1,0 +1,3742 @@
+/* ==========================================================================
+   FEUILLE DE STYLES PRINCIPALE --  WEB SIG ILLIAD
+   ==========================================================================
+   Organisation :
+     1. Imports externes (OpenLayers)
+     2. Variables CSS globales (:root)
+     3. Reset & base
+     4. Structure principale (layout)
+     5. Carte et contrôles de zoom
+     6. Footer et affichages (coordonnées, échelle)
+     7. Sidebar : toolbar + panneaux
+     8. Contenu des panneaux (aide, recherche, édition, géocodage, couches)
+     9. Légende, export, popup, modal
+    10. Animations
+    11. Utilitaires & logo
+    12. Optimisations de compacité desktop (>1024px)
+    13. Responsive : tablette (769-1024px), mobile (≤768px), très petit (≤480px)
+        Chaque breakpoint définit : variables :root, sidebar, footer, toolbar,
+        panneaux, formulaires, géocodage, couches, édition, légende.
+   ========================================================================== */
+
+/* ------------------------------------------------------------------
+   IMPORTS -- Styles CSS des bibliothèques cartographiques OpenLayers.
+   ol.css      : styles de base (canvas, contrôles natifs OL).
+   ol-ext.css  : styles des extensions tierces OL (popup, légende...).
+   ------------------------------------------------------------------ */
+@import "node_modules/ol/ol.css";
+@import "node_modules/ol-ext/dist/ol-ext.css";
+
+/* ------------------------------------------------------------------
+   VARIABLES CSS GLOBALES (:root)
+   Centralise toutes les valeurs réutilisables pour faciliter la
+   maintenance : modifier ici suffit à  propager le changement partout.
+   - Couleurs sémantiques (fond, bordure, état actif/hover)
+   - Dimensions de la sidebar selon le mode (rétracté / étendu)
+     et le point de rupture (desktop / tablette / mobile)
+   - Durée des transitions animées
+   - Tailles des icônes de la toolbar
+   - Espacements internes des panneaux
+   - Hauteur du header et des champs de saisie
+   ------------------------------------------------------------------ */
+:root {
+  --couleur-fond-bouton: #707070; /* Gris moyen -- couleur de fond des boutons */
+  --couleur-fond-panel: #ffffff; /* Blanc -- fond des panneaux */
+  --couleur-bordure: #f4f4f4; /* Gris très clair -- bordures des éléments */
+  --couleur-active: #666; /* Gris foncé -- état actif / sélectionné */
+  --couleur-hover: #979797; /* Gris moyen clair -- état survol */
+
+  /* Largeurs de la sidebar en mode rétracté (seule la toolbar est visible) */
+  --sidebar-collapsed-width: 50px;
+  --sidebar-collapsed-width-tablet: 42px;
+  /* 70% de 60px */
+  --sidebar-collapsed-width-mobile: 42px;
+  --sidebar-collapsed-width-xsmall: 36px; /* <=480px */
+
+  /* Largeurs de la sidebar en mode étendu (panneau de contenu visible) */
+  --sidebar-expanded-width: 350px;
+  --sidebar-expanded-width-tablet: calc(350px * 0.7); /* 70% de 350px = 245px */
+  --sidebar-expanded-width-mobile: calc(350px * 0.6); /* 60% de 350px = 210px */
+
+  --transition-duration: 0.3s; /* Durée standard de toutes les transitions CSS */
+  --toolbar-icon-size: 30px; /* Taille des icônes dans la toolbar (desktop) */
+  --toolbar-icon-size-mobile: 27px; /* Taille des icônes dans la toolbar (mobile) */
+  --padding-panel: 15px; /* Espacement interne des panneaux (desktop) */
+  --padding-panel-mobile: 10px; /* Espacement interne des panneaux (mobile) */
+  --header-height: 50px; /* Hauteur minimale du header de panneau */
+  --input-height: 32px; /* Hauteur uniforme des champs de saisie */
+}
+
+/* ------------------------------------------------------------------
+   RESET GLOBAL
+   Applique border-box à  tous les éléments : la largeur/hauteur inclut
+   padding et bordure, ce qui simplifie les calculs de mise en page.
+   ------------------------------------------------------------------ */
+* {
+  box-sizing: border-box;
+}
+
+/* ------------------------------------------------------------------
+   STYLE DE BASE DU CORPS DE PAGE
+   - margin:0      -> supprime la marge par défaut du navigateur
+   - height:100vh  -> occupe toute la hauteur de la fenêtre
+   - overflow:hidden -> empêche tout défilement parasite au niveau body
+                       (seuls les panneaux internes scrollent)
+   ------------------------------------------------------------------ */
+body {
+  margin: 0;
+  height: 100vh;
+  font-family: Roboto, Arial, sans-serif;
+  overflow: hidden;
+  background-color: rgba(244, 244, 244);
+}
+
+/* ============================================
+   STRUCTURE PRINCIPALE
+   Conteneur racine en flexbox horizontal :
+   sidebar (fixe à  gauche) + carte (flexible à  droite).
+   overflow:hidden évite les débordements lors des animations
+   de la sidebar.
+   ============================================ */
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  position: relative;
+  overflow: hidden;
+  padding-right: 5px;
+  padding-top: 5px;
+}
+
+/* ============================================
+   CARTE (MAP CONTAINER)
+   Zone qui accueille la carte OpenLayers.
+   flex:1       -> prend tout l'espace horizontal restant après la sidebar.
+   min-width:0  -> évite que le flex item ne dépasse son conteneur.
+   La classe .retracted est ajoutée par JS quand la sidebar s'étend,
+   décalant la carte via margin-left pour éviter le chevauchement.
+   ============================================ */
+.map-container {
+  flex: 1;
+  position: relative;
+  transition: margin-left var(--transition-duration)
+    cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 0;
+  background: #ffffff;
+}
+
+/* L'élément canvas OpenLayers remplit tout son conteneur parent */
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+/* ============================================
+   CONTROLES DE ZOOM
+   Boutons +/- positionnés en absolu dans le coin supérieur droit
+   de la carte (z-index:100 pour passer au-dessus du canvas OL).
+   Le flex vertical + overflow:hidden + border-radius donne l'aspect
+   "capsule" unifié avec séparateur entre les deux boutons.
+   ============================================ */
+.map-zoom-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* Style commun des boutons + et - */
+.zoom-btn {
+  width: 30px;
+  height: 30px;
+  background: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid var(--couleur-bordure);
+}
+
+/* Supprime le séparateur sous le dernier bouton */
+.zoom-btn:last-child {
+  border-bottom: none;
+}
+
+/* Survol : fond sombre + texte blanc pour le retour visuel */
+.zoom-btn:hover {
+  background: var(--couleur-active);
+  color: white;
+}
+
+/* Clic : légère contraction pour simuler l'appui physique */
+.zoom-btn:active {
+  transform: scale(0.95);
+}
+
+/* Ajustements de taille de police spécifiques à  chaque bouton */
+.zoom-in {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.zoom-out {
+  font-size: 18px;
+  line-height: 0.8;
+}
+
+/* ============================================
+   SIDEBAR PANEL -- MODE ETENDU
+   La sidebar est un conteneur fixe collé à  gauche.
+   En mode rétracté (défaut) : seule la toolbar (icônes) est visible,
+   sa largeur = --sidebar-collapsed-width.
+   La classe .expanded est ajoutée par JS pour révéler le panneau de
+   contenu, la largeur passe alors à  --sidebar-expanded-width.
+   z-index:1000 pour superposer la sidebar à  la carte.
+   ============================================ */
+.sidebar-panel {
+  position: fixed;
+  left: 0;
+  top: 0;
+  height: 100vh;
+  width: var(--sidebar-collapsed-width);
+  background: var(--couleur-fond-panel);
+  border-right: var(--couleur-bordure) 5px solid;
+  transition: width var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1000;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Mode étendu : la sidebar occupe sa pleine largeur définie dans :root */
+.sidebar-panel.expanded {
+  width: var(--sidebar-expanded-width);
+}
+
+/* ============================================
+   TOOLBAR -- BARRE D'ICÔNES (MODE RÉTRACTÉ)
+   Colonne verticale d'icônes cliquables toujours visible,
+   même quand la sidebar est rétractée.
+   Chaque icône ouvre le panneau de contenu correspondant.
+   flex-direction:column + align-items:center -> icônes centrées.
+   flex-shrink:0 -> la toolbar ne se réduit jamais quand la sidebar
+   se rétracte (c'est le panneau de contenu qui disparaît).
+   ============================================ */
+.sidebar-toolbar {
+  width: var(--sidebar-collapsed-width);
+  height: 100%;
+  background: #efc0b9;
+  border-right: 5px solid rgba(244, 244, 244);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+
+/* Icône individuelle de la toolbar.
+   top:50px décale l'ensemble des icônes sous l'éventuel logo/header.
+   overflow:hidden est nécessaire pour l'effet de fond animé (::before). */
+.toolbar-icon {
+  width: var(--toolbar-icon-size);
+  height: var(--toolbar-icon-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(255, 255, 255);
+  border: 2px solid #d0d0d0ec;
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  box-shadow: #707070c0 0px 2px 4px;
+  padding: 6px;
+  margin: 2px 0;
+  top: 50px;
+}
+
+/* Calque de fond pour l'état actif (opacité animée de 0→1) */
+.toolbar-icon::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--couleur-active);
+  opacity: 0;
+  transition: opacity var(--transition-duration) ease;
+}
+
+/* L'image png est placée au-dessus du calque ::before (z-index:1).
+   Filtre par défaut : icônes blanches/grises sur fond sombre de toolbar. */
+.toolbar-icon img {
+  width: 22px;
+  height: 22px;
+  position: relative;
+  z-index: 1;
+  filter: brightness(10) invert(0.4);
+}
+
+/* Survol : bordure colorée + ombre bleue pour signaler l'interactivité */
+.toolbar-icon:hover {
+  border-color: var(--couleur-hover);
+  box-shadow: 0 3px 8px rgba(74, 144, 226, 0.3);
+}
+
+/* Au survol, l'icône retrouve sa couleur d'origine (annule le filtre) */
+.toolbar-icon:hover img {
+  filter: grayscale(0);
+}
+
+/* État actif (panneau ouvert) : fond coloré + ombre prononcée */
+.toolbar-icon.active {
+  background: var(--couleur-active);
+  border-color: var(--couleur-active);
+  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+}
+
+/* Active le calque ::before (fond coloré) pour les icônes actives */
+.toolbar-icon.active::before {
+  opacity: 1;
+}
+
+/* Icône blanche sur fond coloré quand l'outil est actif */
+.toolbar-icon.active img {
+  filter: brightness(0) invert(1);
+}
+
+
+/* ============================================
+   SIDEBAR CONTENT -- ZONE DE CONTENU DES PANNEAUX
+   Occupe l'espace restant après la toolbar (flex:1).
+   Par défaut masquée et décalée (opacity:0 + translateX(-20px)).
+   Quand .expanded est présent sur le parent, elle glisse vers
+   la droite et devient visible (opacity:1 + translateX(0)).
+   pointer-events:none empêche toute interaction quand invisible.
+   ============================================ */
+.sidebar-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-20px);
+  transition: all var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Quand la sidebar est étendue, le contenu glisse et devient interactif */
+.sidebar-panel.expanded .sidebar-content {
+  opacity: 1;
+  pointer-events: all;
+  transform: translateX(0);
+}
+
+/* Bouton de fermeture rouge positionné en absolu dans le coin du panneau */
+.close-panel-btn {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 18px;
+  height: 18px;
+  background: #dc3545;
+  border: 2px solid var(--couleur-bordure);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  color: white;
+  transition: all 0.2s ease;
+  z-index: 10;
+  line-height: 1;
+}
+
+/* Chaque panneau de contenu (aide, recherche, couches...) est masqué par
+   défaut. La classe .active est ajoutée par JS pour afficher celui
+   correspondant à  l'icône toolbar cliquée. L'animation slideIn évite
+   un apparition brusque. */
+.content-panel {
+  display: none;
+  flex-direction: column;
+  height: 100%;
+  animation: slideIn 0.3s ease;
+}
+
+/* Panneau actif : affiché en flex pour permettre la disposition
+   header + body avec scroll uniquement sur le body */
+.content-panel.active {
+  display: flex;
+}
+
+/* En-tête du panneau : titre + bordure colorée + dégradé subtil */
+.panel-header {
+  margin: 0;
+  padding: var(--padding-panel) var(--padding-panel) 12px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid var(--couleur-active);
+  background: rgba(244, 244, 244);
+  flex-shrink: 0;
+  min-height: var(--header-height);
+  display: flex;
+  align-items: center;
+}
+
+/* Corps du panneau : zone scrollable verticalement.
+   flex:1 + min-height:0 -> permet au body de grandir sans dépasser
+   la hauteur du panneau (pattern flex column scrollable).
+   scrollbar-width:thin + scrollbar-color -> scrollbar native Firefox. */
+.panel-body {
+  flex: 1;
+  padding: var(--padding-panel);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(228, 226, 226) transparent;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Personnalisation de la scrollbar WebKit (Chrome, Safari, Edge) */
+.panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-body::-webkit-scrollbar-track {
+  background: transparent; /* Piste invisible */
+}
+
+.panel-body::-webkit-scrollbar-thumb {
+  background: var(--couleur-active); /* Curseur de la scrollbar */
+  border-radius: 3px;
+}
+
+/* ============================================
+   AIDE
+   Sections d'aide affichées dans le panneau "Aide".
+   Chaque .help-section regroupe un titre h4 et une liste ul/li
+   décrivant les fonctionnalités de l'outil.
+   ============================================ */
+.help-section {
+  margin-bottom: 25px;
+}
+
+.help-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+  color: var(--couleur-active);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-section ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.help-section li {
+  margin-bottom: 10px;
+  line-height: 1.6;
+  font-size: 0.9rem;
+}
+
+/* ============================================
+   FORMULAIRE DE RECHERCHE
+   Formulaire en grille une colonne pour filtrer les données.
+   .frm-recherche.searching::after affiche une bulle "Filtrage en cours"
+   centrée par-dessus le formulaire pendant le traitement.
+   .form-group     : groupe label + input/select vertical.
+   .form-actions   : grille 2 colonnes pour les boutons Valider/Réinitialiser.
+   .btn-primary    : bouton action principale (recherche).
+   .btn-secondary  : bouton action secondaire (effacer).
+   ============================================ */
+
+
+/* Overlay pendant le filtrage */
+.frm-recherche.searching::after {
+  content: "Filtrage en cours...";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.95);
+  padding: 16px 24px;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 10;
+  font-weight: 600;
+  color: var(--couleur-active);
+}
+
+/* Groupe label + champ */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px; /* espace label / champ */
+  margin-bottom: 1px; /* espace entre groupes */
+}
+
+/* Label */
+.form-group label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 0;
+}
+
+/* Champs */
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 4px 8px;
+  border: 2px solid var(--couleur-bordure);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  height: calc(var(--input-height) - 6px);
+}
+
+/* Focus */
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--couleur-active);
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.1);
+}
+
+/* Boutons */
+.form-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Boutons communs */
+.btn-primary,
+.btn-secondary {
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  min-height: 28px;
+}
+
+/* Bouton valider */
+.btn-primary {
+  background: var(--couleur-fond-bouton);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(74, 144, 226, 0.25);
+}
+
+.btn-primary:hover {
+  background: #464545;
+  transform: translateY(-1px);
+}
+
+/* Bouton reset */
+.btn-secondary {
+  background: #f0a3a3;
+  color: #fff;
+}
+
+.btn-secondary:hover {
+  background: #e26161;
+}
+
+/* ============================================
+   OUTILS EDITION
+   Grille de boutons permettant de choisir l'outil de dessin actif
+   (point, ligne, polygone, effacement...).
+   .edit-tool        : bouton individuel avec icône + label.
+   .edit-tool.actif  : état actif avec fond coloré (ou rouge pour
+                       l'outil d'effacement .symbol-cross.actif).
+   .edition-info     : bloc d'information contextuel en dessous des
+                       boutons (instructions selon l'outil sélectionné).
+   ============================================ */
+.edition-tools {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center; /* centre les boutons */
+  gap: 12px; /* espace entre les boutons */
+  margin-bottom: 16px;
+}
+
+.edit-tool {
+  width: 32px;
+  height: 32px;
+  background: rgb(243, 242, 242);
+  border: 2px solid #dad9d9;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);  */
+  cursor: pointer;
+}
+
+.edit-tool img {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+  filter: grayscale(0.1);
+  margin: 0;
+}
+
+/* Icônes spécifiques pour les outils d'effacement, plus petite
+   pour différencier visuellement ces fonctions sensibles. */
+.edit-tool.symbol-cross img {
+  width: 15px;
+  height: 15px;
+}
+
+.edit-tool.symbol-modify img {
+  width: 20px;
+  height: 20px;
+  filter: invert(54%) sepia(79%) saturate(382%)
+        hue-rotate(127deg) brightness(92%) contrast(89%)
+}
+
+
+.edit-tool span {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #555;
+  text-align: center;
+}
+
+/* Survol : élévation + ombre bleue légère */
+.edit-tool:hover {
+  border-color: var(--couleur-active);
+  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.2);
+}
+
+
+/* Au survol : icône SVG colorée */
+.edit-tool:hover .edit-tool-icon {
+  color: var(--couleur-active);
+}
+
+/* Au survol : label coloré */
+.edit-tool:hover span {
+  color: var(--couleur-active);
+}
+
+/* Outil actif (sélectionné) : fond et bordure colorés */
+.edit-tool.actif {
+  background: var(--couleur-active);
+  border-color: var(--couleur-active);
+  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+}
+
+/* Outil d'effacement actif (symbol-cross) : fond rouge pour alerter
+   l'utilisateur qu'il est en mode suppression */
+.edit-tool.symbol-cross.actif {
+  background: #e26161;
+  border-color: var(--couleur-active);
+  box-shadow: 0 4px 12px rgba(74, 144, 226, 0.4);
+}
+
+/* Outil de modification actif (symbol-modify) : fond orange */
+.edit-tool.symbol-modify.actif {
+  background: #ff8800;
+  border-color: #ff8800;
+  box-shadow: 0 4px 12px rgba(255, 136, 0, 0.4);
+}
+
+/* Icône blanche sur fond actif */
+.edit-tool.actif img {
+  filter: brightness(0) invert(1);
+}
+
+/* Icône SVG blanche sur fond actif */
+.edit-tool.actif .edit-tool-icon {
+  color: white;
+}
+
+/* Label blanc sur fond actif */
+.edit-tool.actif span {
+  color: white;
+}
+
+/* Bloc d'informations contextuelles sur l'outil sélectionné */
+.edition-info {
+  padding: 15px;
+  background: var(--couleur-fond-panel);
+  border-left: 4px solid var(--couleur-active);
+  border-radius: 6px;
+}
+
+.edition-info p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #495057;
+}
+
+/* ============================================
+   NUMÉRISATION ENRICHIE
+   Panneau de numérisation inspiré du contrôle ol.control.Drawing
+   du plugin GpPluginOpenLayers (Géoportail pour OpenLayers).
+   ─────────────────────────────────────────────
+   1. Corps du panneau
+   2. Sections (titre + corps repliable)
+   3. Grille des outils
+   4. Boutons outils
+   5. Message info contextuel
+   6. Sélecteur de style
+   7. Zone de dépôt (import drag & drop)
+   8. Boutons export
+   ============================================ */
+
+/* 1. Corps du panneau — scrollable verticalement */
+.num-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Écrase le padding de .panel-body : l'espacement est géré par padding-inline */
+  padding: 6px 10px 10px;
+  /* Scroll interne : le body occupe tout l'espace dispo et défile */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--couleur-active, #c0392b) transparent;
+  /* Contient les enfants dans la largeur disponible */
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* Scrollbar WebKit pour num-panel-body */
+.num-panel-body::-webkit-scrollbar {
+  width: 5px;
+}
+.num-panel-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+.num-panel-body::-webkit-scrollbar-thumb {
+  background: var(--couleur-active, #c0392b);
+  border-radius: 3px;
+}
+.num-panel-body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--couleur-active, #c0392b) 80%, black);
+}
+
+/* 2. Sections */
+.num-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  /* overflow:hidden retiré : il coupait le thumb du slider range.
+     Les coins arrondis restent visibles via clip sur le titre et le body. */
+  background: #fff;
+}
+
+/* Coins arrondis sur le premier et dernier enfant direct pour
+   remplacer l'ancien overflow:hidden du parent. */
+.num-section > :first-child {
+  border-radius: 7px 7px 0 0;
+}
+.num-section > :last-child {
+  border-radius: 0 0 7px 7px;
+}
+
+.num-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #4a5568;
+  padding: 7px 10px;
+  background: #f7f8fa;
+  border-bottom: 1px solid #e2e8f0;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+button.num-section-title.num-collapse-btn {
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  justify-content: space-between;
+  transition: background 0.18s;
+  border-bottom: none;
+}
+
+button.num-section-title.num-collapse-btn:hover {
+  background: #edf2f7;
+}
+
+button.num-section-title.num-collapse-btn[aria-expanded="true"] {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.num-chevron {
+  font-size: 0.62rem;
+  transition: transform 0.2s ease;
+  margin-left: auto;
+}
+
+button.num-collapse-btn[aria-expanded="true"] .num-chevron {
+  transform: rotate(180deg);
+}
+
+.num-section-body {
+  padding: 10px;
+  display: none;          /* masqué par défaut — géré par .is-open via JS */
+  flex-direction: column;
+  gap: 8px;
+  /* pas d'overflow:hidden ici : le slider serait tronqué.
+     Le containment horizontal est assuré par min-width:0 sur num-range-wrap. */
+}
+
+.num-section-body.is-open {
+  display: flex;
+  animation: num-fadeIn 0.18s ease;
+}
+
+@keyframes num-fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* 3. Grille des outils */
+.num-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 10px;
+}
+
+/* 4. Boutons outils */
+.num-tool {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 3px;
+  background: #f3f4f6;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  min-height: 58px;
+}
+
+.num-tool img,
+.num-tool svg {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
+
+.num-tool.num-tool-texte svg {
+  color: #19A79B;
+}
+
+.num-tool span {
+  font-size: 0.57rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.num-tool:hover {
+  border-color: #9ca3af;
+  background: #e9ecef;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transform: translateY(-1px);
+}
+
+/* État actif générique */
+.num-tool.actif {
+  background: #4a5568;
+  border-color: #2d3748;
+  box-shadow: 0 3px 10px rgba(74,85,104,0.4);
+}
+.num-tool.actif img,
+.num-tool.actif svg { filter: brightness(0) invert(1); }
+.num-tool.actif span { color: #fff; }
+
+/* Actif — effacer (rouge) */
+.num-tool-delete.actif {
+  background: #e53e3e;
+  border-color: #c53030;
+  box-shadow: 0 3px 10px rgba(229,62,62,0.35);
+}
+
+.num-tool-modify img {
+  filter: brightness(0) saturate(100%)
+          invert(56%) sepia(49%) saturate(518%) 
+          hue-rotate(125deg) brightness(95%) contrast(92%);
+}
+
+/* Actif — modifier (orange) */
+.num-tool-modify.actif {
+  background: #dd6b20;
+  border-color: #c05621;
+  box-shadow: 0 3px 10px rgba(221,107,32,0.35);
+}
+
+
+/* 5. Message info */
+.num-info {
+  padding: 9px 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #4a5568;
+  border-radius: 6px;
+}
+
+.num-info-text {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #4a5568;
+  line-height: 1.45;
+}
+
+/* 6. Sélecteur de style */
+.num-style-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.num-style-row label {
+  font-size: 0.73rem;
+  color: #4a5568;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.num-style-row input[type="color"] {
+  width: 40px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid #cbd5e0;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.num-style-row--range {
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;    /* garantit que le bloc prend toute la largeur dispo */
+}
+
+.num-range-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;        /* évite le débordement flex sur petits panneaux */
+  overflow: hidden;
+}
+
+.num-range-wrap input[type="range"] {
+  flex: 1;
+  min-width: 0;        /* indispensable pour que flex:1 soit respecté */
+  width: 0;            /* combiné avec flex:1 force le recalcul correct */
+  height: 4px;
+  accent-color: #4a5568;
+  cursor: pointer;
+}
+
+.num-range-val {
+  font-size: 0.70rem;
+  color: #718096;
+  min-width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* 7. Zone de dépôt */
+.num-drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 10px;
+  border: 2px dashed #cbd5e0;
+  border-radius: 8px;
+  background: #f7f8fa;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+  color: #718096;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.num-drop-zone:hover,
+.num-drop-zone:focus {
+  border-color: #4a5568;
+  background: #edf2f7;
+  outline: none;
+}
+
+.num-drop-zone.dragover {
+  border-color: #3182ce;
+  background: #ebf8ff;
+  color: #2b6cb0;
+}
+
+.num-drop-icon {
+  font-size: 1.5rem;
+  opacity: 0.5;
+}
+
+/* 8. Boutons export */
+.num-export-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.num-export-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  background: #edf2f7;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 0.77rem;
+  font-weight: 600;
+  color: #4a5568;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.num-export-btn:hover {
+  background: #e2e8f0;
+  border-color: #a0aec0;
+  transform: translateY(-1px);
+}
+
+.num-btn-danger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  border-radius: 6px;
+  font-size: 0.77rem;
+  font-weight: 600;
+  color: #c53030;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  margin-top: 4px;
+}
+
+.num-btn-danger:hover {
+  background: #fed7d7;
+  border-color: #fc8181;
+}
+
+/* ── Modale saisie texte ──────────────────────────────────────────────────── */
+.num-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  z-index: 9999;
+}
+
+.num-modal-overlay.visible {
+  display: flex;
+}
+
+.num-modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 22px 24px 18px;
+  width: 320px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.num-modal-titre {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2d3748;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.num-modal-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1.5px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  color: #2d3748;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.num-modal-input:focus {
+  border-color: #e63946;
+  box-shadow: 0 0 0 3px rgba(230,57,70,0.15);
+}
+
+.num-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.num-modal-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.num-modal-btn--ok {
+  background: #2f8a23;
+  color: #fff;
+}
+
+.num-modal-btn--ok:hover {
+  border: 2px solid #080808;
+  transform: translateY(-1px);
+}
+
+.num-modal-btn--cancel {
+  background: #edf2f7;
+  color: #4a5568;
+  border: 1px solid #cbd5e0;
+}
+
+.num-modal-btn--cancel:hover {
+  background: #e2e8f0;
+}
+
+/* ============================================
+   GEOCODAGE
+   Panneau de recherche d'adresses (géocodage).
+   - .geocodage-container : colonne flex regroupant input + bouton + résultats.
+   - .geocodage           : ligne flex (input + bouton loupe côte à  côte).
+   - .resultat-geocodage  : liste scrollable des adresses trouvées.
+   - Survol d'un résultat : glissement horizontal (translateX) pour
+     indiquer que l'élément est cliquable.
+   ============================================ */
+.geocodage-container {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.geocodage {
+  display: flex;
+  flex-direction: row;
+}
+
+.geocodage input {
+  flex: 1;
+  padding: 12px;
+  background-color: rgba(209, 230, 246, 0.181);
+  border: 2px solid rgb(209, 230, 246);
+  -webkit-border-radius: 20px 0px 0px 20px;
+  -moz-border-radius: 20px 0px 0px 20px;
+  border-radius: 20px 0px 0px 20px;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.geocodage input:focus {
+  outline: none;
+  border-color: var(--couleur-active);
+  box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+}
+
+.geocodage button {
+  width: 48px;
+  height: 48px;
+  background: rgb(209, 230, 246);
+  border: none;
+  -webkit-border-radius: 0px 20px 20px 0px;
+  -moz-border-radius: 0px 20px 20px 0px;
+  border-radius: 0px 20px 20px 0px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.geocodage button:hover {
+  background: var(--couleur-active);
+  border: #515252 2px solid;
+}
+
+.bouton-geocodage {
+  width: 23px;
+  height: 23px;
+  filter: invert(46%) sepia(6%) saturate(687%) hue-rotate(180deg)
+    brightness(88%) contrast(86%);
+}
+
+.geocodage button:hover img{
+  filter: brightness(0) invert(1);
+}
+
+
+/* Zone de résultats scrollable avec barre fine */
+.resultat-geocodage {
+  max-height: 400px;
+}
+
+.resultat-geocodage ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Chaque résultat d'adresse : carte cliquable avec survol glissant */
+/* .resultat-geocodage li {
+  padding: 12px 15px;
+  margin-bottom: 8px;
+  background: white;
+  border: 2px solid var(--couleur-bordure);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.85rem;
+} */
+
+/* Survol : glissement vers la droite pour indiquer la sélectionnabilité */
+.resultat-geocodage li:hover {
+  background: var(--couleur-fond-panel);
+  border-color: var(--couleur-active);
+  transform: translateX(5px);
+}
+
+/* ============================================
+   GESTION DES COUCHES
+   Panneau de contrôle de la visibilité et opacité des couches cartographiques.
+   Organisation :
+   - .custom-layer-switcher    : liste scrollable de tous les groupes
+   - .layer-group              : carte d'un groupe de couches (ex: "Fond de plan")
+   - .layer-group-header       : en-tête cliquable (checkbox œil + titre + chevron)
+   - .layer-group-items        : couches individuelles, animées en expand/collapse
+   - .layer-item               : couche individuelle (checkbox œil + label + opacité)
+   - .opacity-control          : slider + valeur d'opacité pour chaque couche
+   Les cases à  cocher sont remplacées visuellement par des icônes œil
+   Font Awesome (\f06e = fa-eye, \f070 = fa-eye-slash).
+   ============================================ */
+.content-panel[data-panel-content="couches"] .panel-body {
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1;
+}
+
+/* Liste des groupes de couches : scrollable avec barre fine */
+.custom-layer-switcher {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-right: 5px;
+  scrollbar-width: thin;
+}
+
+/* Scrollbar WebKit du layer switcher */
+.custom-layer-switcher::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-layer-switcher::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.custom-layer-switcher::-webkit-scrollbar-thumb {
+  background: var(--couleur-active);
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.custom-layer-switcher::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Carte d'un groupe de couches : fond blanc + bordure + transition couleur */
+.layer-group {
+  background: rgb(231, 241, 248);
+  border: 1px solid white;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+  flex-shrink: 0;
+}
+
+/* En-tête cliquable du groupe (expand/collapse).
+   user-select:none évite la sélection de texte au double-clic.
+   position:relative est nécessaire pour positionner le chevron en absolu. */
+.layer-group-header {
+  padding: 12px 15px;
+  padding-right: 30px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  color: rgb(82, 82, 82);
+  transition: background 0.2s ease;
+  user-select: none;
+  position: relative;
+}
+
+/* Survol de l'en-tête : dégradé discret pour indiquer l'interactivité */
+.layer-group-header:hover {
+  background: #c3daee;
+}
+
+/* Checkbox native masquée, remplacée visuellement par une icône œil Font Awesome.
+   appearance:none + background:transparent + border:none -> retire l'apparence
+   native de la case à  cocher dans tous les navigateurs. */
+.group-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  position: relative;
+  margin: 0;
+  background: transparent;
+  border: none;
+  flex-shrink: 0;
+}
+
+/* Icône d'œil barré (invisible) */
+.group-checkbox::before {
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  content: "\f070";
+  /* fa-eye-slash */
+  position: absolute;
+  font-size: 12px;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999;
+  opacity: 0.5;
+  transition: all 0.2s ease;
+}
+
+/* Icône d'œil (visible) */
+.group-checkbox:checked::before {
+  content: "\f06e";
+  /* fa-eye */
+  color: var(--couleur-active);
+  opacity: 1;
+}
+
+/* Survol de la checkbox : pré-visualisation de l'état actif */
+.group-checkbox:hover::before {
+  opacity: 0.8;
+  color: var(--couleur-active);
+}
+
+/* Bouton chevron positionné en absolu à  droite de l'en-tête.
+   La rotation de 90° via .expanded indique que le groupe est développé. */
+.group-toggle {
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  font-size: 12px;
+  color: #666;
+  transition: transform 0.2s ease;
+  cursor: pointer;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.group-toggle::before {
+  content: "\f054";
+  /* Code unicode Font Awesome pour chevron-right (>) */
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+/* Chevron pivote de 90° quand le groupe est développé (classe .expanded) */
+.layer-group-header.expanded .group-toggle::before {
+  transform: rotate(90deg);
+}
+
+/* Titre du groupe : prend l'espace restant en flex (flex:1) */
+.group-title {
+  flex: 1;
+  font-size: 0.95rem;
+}
+
+/* Conteneur des couches individuelles d'un groupe.
+   L'animation expand/collapse est réalisée par transition de max-height :
+   500->1000px (ouvert) à  0px (fermé). L'opacité est également animée
+   pour un rendu plus fluide. */
+.layer-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 1000px;
+  overflow: hidden;
+  transition:
+    max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.3s ease;
+  opacity: 1;
+}
+
+/* Groupe rétracté : max-height:0 + opacity:0 pour masquer les couches.
+   !important est nécessaire pour surcharger la valeur de base. */
+.layer-group-items.collapsed {
+  max-height: 0 !important;
+  opacity: 0;
+}
+
+/* Couche individuelle : indentation via padding-left (35px) pour
+   la hiérarchie visuelle sous l'en-tête du groupe. */
+.layer-item {
+  padding: 10px 15px 10px 35px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--couleur-bordure);
+  transition: background 0.2s ease;
+  background: white;
+}
+
+/* Supprime la bordure top de la première couche (déjÀ  séparée par l'en-tête) */
+.layer-item:first-child {
+  border-top: none;
+}
+
+/* Survol de la couche : fond légèrement teinté */
+.layer-item:hover {
+  background: var(--couleur-fond-panel);
+}
+
+/* Première ligne d'une couche : checkbox œil + nom de la couche */
+.layer-item > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layer-item input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  position: relative;
+  margin: 0;
+  background: transparent;
+  border: none;
+  flex-shrink: 0;
+}
+
+/* Icône d'œil barré (invisible) couches */
+.layer-item input[type="checkbox"]::before {
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  content: "\f070";
+  /* fa-eye-slash */
+  position: absolute;
+  font-size: 12px;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999;
+  opacity: 0.5;
+  transition: all 0.2s ease;
+}
+
+.layer-item input[type="checkbox"]:checked::before {
+  content: "\f06e";
+  /* fa-eye */
+  color: var(--couleur-active);
+  opacity: 1;
+}
+
+.layer-item input[type="checkbox"]:hover::before {
+  opacity: 0.8;
+  color: var(--couleur-active);
+}
+
+.layer-item label {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: rgb(109, 108, 108);
+  transition: color 0.2s ease;
+  flex: 1;
+}
+
+.layer-item:hover label {
+  color: var(--couleur-active);
+  font-weight: 500;
+}
+
+.layer-item input[type="checkbox"]:checked + label {
+  font-weight: 600;
+  color: rgb(109, 108, 108);
+}
+
+/* Conteneur des boutons d'action pour les couches de recherche */
+.layer-recherche-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+/* Bouton tableau résultats */
+.layer-table-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  background: none;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: #999;
+  font-size: 0.78rem;
+  transition: all 0.2s ease;
+}
+
+.layer-table-btn:hover {
+  color: var(--couleur-active, #0d6efd);
+  border-color: var(--couleur-active, #0d6efd);
+  background: rgba(13, 110, 253, 0.06);
+}
+
+/* Bouton de suppression pour les couches de résultats de recherche */
+.layer-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  background: none;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: #999;
+  font-size: 0.78rem;
+  transition: all 0.2s ease;
+}
+
+.layer-delete-btn:hover {
+  color: #dc3545;
+  border-color: #dc3545;
+  background: rgba(220, 53, 69, 0.08);
+}
+
+/* Ligne de contrôle d'opacité : label + slider + valeur numérique */
+.opacity-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+  margin-left: 0;
+}
+
+/* Libellé "Opacité :" à  gauche du slider */
+.opacity-label {
+  font-size: 0.75rem;
+  color: #6c757d;
+  min-width: 50px;
+}
+
+/* Slider d'opacité personnalisé.
+   appearance:none retire l'apparence native pour styliser
+   le rail (fond dégradé) et le curseur (thumb) manuellement. */
+.opacity-slider {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(to right, #e9ecef 0%, var(--couleur-active) 100%);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+/* Curseur (thumb) du slider -- WebKit (Chrome, Safari, Edge) */
+.opacity-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--couleur-active);
+  border: 2px solid white;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.opacity-slider::-webkit-slider-thumb:hover {
+  background: var(--couleur-hover);
+  transform: scale(1.2);
+}
+
+/* Curseur (thumb) du slider -- Firefox */
+.opacity-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: var(--couleur-active);
+  border: 2px solid white;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.opacity-slider::-moz-range-thumb:hover {
+  background: var(--couleur-hover);
+  transform: scale(1.2);
+}
+
+/* Valeur numérique de l'opacité affichée à  droite du slider (ex: "80%") */
+.opacity-value {
+  font-size: 0.75rem;
+  color: #495057;
+  font-weight: 600;
+  min-width: 35px;
+  text-align: right;
+}
+
+/* ============================================
+   LÉGENDE RÉTRACTABLE
+   Bloc de légende affiché en bas du panneau couches.
+   L'animation expand/collapse est réalisée via transition de max-height
+   (500px ouvert -> 40px fermé).
+   Le pseudo-élément ::before du .legend-title affiche un chevron
+   Font Awesome (\f078 = down, \f054 = right) pour indiquer l'état.
+   ============================================ */
+
+/* ============================================
+   ONGLETS DU PANNEAU COUCHES
+   ============================================ */
+.couches-tabs {
+  display: flex;
+  border-bottom: 2px solid var(--couleur-bordure);
+  background: var(--couleur-fond-panel);
+  padding: 0 var(--padding-panel);
+  gap: 4px;
+}
+
+.couches-tab {
+  flex: 1;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--couleur-active);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.couches-tab:hover {
+  color: var(--couleur-fond-bouton);
+}
+
+.couches-tab.active {
+  color: var(--couleur-fond-bouton);
+  border-bottom-color: var(--couleur-fond-bouton);
+  font-weight: 700;
+}
+
+.couches-tab-content {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.couches-tab-content.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Ajuster le panel-body dans les onglets */
+.couches-tab-content .panel-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ============================================
+   LÉGENDE (onglet) — dynamique
+   ============================================ */
+
+/* Container principal */
+.legend-container {
+  border-radius: 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+
+/* Contenu scrollable */
+.legend-content {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Message "aucune couche active" */
+.legend-empty {
+  color: #999;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 24px 12px;
+  line-height: 1.8;
+}
+
+/* ── Groupe de couches ── */
+.legend-group {
+  margin-bottom: 6px;
+  border: 1px solid var(--couleur-bordure);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* En-tête du groupe */
+.legend-group-title {
+  background: var(--couleur-fond-bouton);
+  color: white;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Corps du groupe */
+.legend-group-items {
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: white;
+}
+
+/* ── Ligne d'un élément : symbole + libellé ── */
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.legend-item:last-child {
+  border-bottom: none;
+}
+
+/* Conteneur du symbole (SVG ou icône FA) */
+.legend-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+}
+
+/* Icône Font Awesome pour couches raster/WMS */
+.legend-icon-fa {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 18px;
+  font-size: 1.1rem;
+}
+
+/* Libellé de l'élément */
+.legend-label {
+  font-size: 0.82rem;
+  color: #333;
+  line-height: 1.3;
+}
+
+/* ── Couche multiclasse (ex: Chlordécone) ── */
+/* Titre de la couche sans symbole */
+.legend-item--group-title {
+  padding: 5px 0 2px 0;
+  border-bottom: none;
+}
+.legend-label--couche {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #444;
+}
+/* Sous-classe indentée */
+.legend-item--subclass {
+  padding-left: 8px;
+}
+
+
+/* Symbole rapport rendu - legende */
+.rapport-rendu-symbol {
+  background-color: rgba(255, 255, 255, 0.8);
+  border: 2px dashed red;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  font-weight: bold;
+  color: #333;
+  white-space: nowrap;
+  min-width: 25px;
+  min-height: 15px;
+  text-align: center;
+  line-height: 3;
+}
+
+/* ============================================
+   POPUP
+   Fenêtre d'information qui s'affiche quand l'utilisateur clique
+   sur un objet cartographique (feature).
+   - Hauteur auto avec min-height pour éviter les popups vides.
+   - Scrollbar fine pour les contenus longs.
+   - .popup-placeholder : message affiché avant toute sélection.
+   - .tableauEl         : tableau des attributs de l'objet sélectionné.
+   ============================================ */
+.popup {
+  background: white;
+  border: 1px solid #dee2e6;
+  /*border-top: none;  fusion visuelle avec le bouton-onglet au-dessus */
+  border-radius: 6px 6px 6px 6px;
+  padding: 1px 16px;
+  height: auto;
+  overflow-y: auto;
+  min-height: 120px;
+  scrollbar-width: thin;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+}
+
+.popup::-webkit-scrollbar {
+  width: 6px;
+}
+
+.popup::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.popup::-webkit-scrollbar-thumb {
+  background: var(--couleur-active);
+  border-radius: 3px;
+}
+
+/* Message d'invite affiché tant qu'aucun objet n'est sélectionné */
+.popup-placeholder {
+  padding: 24px 10px;
+  text-align: left;
+  color: #888;
+  font-style: italic;
+  font-size: 0.88rem;
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Tableau des attributs de l'objet sélectionné : 
+   lignes zébrées (nth-child odd) pour améliorer la lisibilité */
+.tableauEl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  margin-bottom: 15px;
+  margin-top: 15px;
+}
+
+.tableauEl td {
+  padding: 6px ;
+  border-bottom: 1px solid var(--couleur-bordure);
+  color: #494949;
+}
+
+.tableauEl tr:nth-child(odd) {
+  background-color: #f8f7f7;
+}
+
+.tableauEl a {
+  color: var(--couleur-active);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.tableauEl a:hover {
+  text-decoration: underline;
+}
+
+/* Colonne label — discrète, , grisée */
+.tableauEl .attr-label {
+  color: #494949;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  padding-right: 1px;
+  width: 1%;
+}
+
+/* Navigation entre features superposées */
+.popup-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 2px 6px;
+  border-bottom: 1px solid var(--couleur-bordure);
+  gap: 4px;
+  padding-top: 12px;
+  /* margin-bottom: 2px; */
+}
+
+.popup-nav-label {
+  font-size: 0.8rem;
+  color: #777;
+  font-weight: 500;
+}
+
+.popup-nav-btn {
+  background: rgb(225, 234, 247);
+  border: 1px solid #adadad;
+  border-radius: 4px;
+  /* box-shadow: #9e9e9e 1px 1px 1px; */
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #595858;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+.popup-nav-btn:hover:not(:disabled) {
+  background: var(--couleur-active);
+  color: white;
+}
+
+.popup-nav-btn:disabled {
+  color: #ccc;
+  border-color: #eee;
+  cursor: default;
+}
+
+/* Bouton export KML intégré dans la popup-nav (à droite) */
+.popup-nav-export {
+  background: rgb(225, 234, 247);
+  border: 1px solid #adadad;
+  border-radius: 4px;
+  /* box-shadow: #9e9e9e 0px 1px 2px; */
+  width: 80px;
+  height: 26px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 0.72rem;   /* texte "Exporter" — desktop */
+  font-weight: 500;
+  color: #5a5959;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.popup-nav-export:hover {
+  background: var(--couleur-active);
+  border-color: #eee;
+  color: white;
+}
+
+.popup-nav-export img {
+  width: 14px;
+  height: 14px;
+  opacity: 0.75;
+  display: block;
+}
+
+.popup-nav-export:hover img {
+  filter: brightness(0) invert(1);
+  opacity: 1;
+}
+
+/* Variante : nav avec seulement le bouton export (feature unique) */
+.popup-nav--single {
+  justify-content: flex-end;
+  border-bottom: 1px solid var(--couleur-bordure);
+  padding: 4px 2px;
+  margin-bottom: 2px;
+}
+
+/* ============================================
+   FOOTER
+   Barre d'informations fixée en bas de l'écran (position:fixed).
+   Son bord gauche s'aligne dynamiquement sur la sidebar :
+   - En mode rétracté : left = largeur toolbar (collapsed)
+   - En mode étendu   : left = largeur totale sidebar (expanded)
+   z-index:500 pour passer au-dessus de la carte mais sous les modals.
+   ============================================ */
+/* ============================================
+   TABLEAU RÉSULTATS DE RECHERCHE
+   Panneau affiché au-dessus du footer après une requête.
+   Position fixed, aligné sur le footer, avec scroll interne.
+   ============================================ */
+.tableau-resultats {
+  position: fixed;
+  bottom: var(--footer-height, 28px);
+  left: var(--sidebar-collapsed-width);
+  right: 0;
+  z-index: 499;
+  background: #fff;
+  border-top: 2px solid var(--couleur-active, #c0392b);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  max-height: 280px;
+  transition:
+    left var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1),
+    bottom var(--transition-duration) ease;
+}
+
+.tableau-resultats.hidden {
+  display: none;
+}
+
+/* Décalage quand la sidebar est étendue */
+.sidebar-panel.expanded ~ .tableau-resultats {
+  left: var(--sidebar-expanded-width);
+}
+
+.tableau-resultats-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  background: var(--couleur-active, #c0392b);
+  color: #fff;
+  min-height: 30px;
+  flex-shrink: 0;
+}
+
+.tableau-resultats-titre {
+  font-weight: 600;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.tableau-resultats-count {
+  font-size: 0.75rem;
+  opacity: 0.85;
+  flex: 1;
+}
+
+.tableau-resultats-fermer {
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+.tableau-resultats-fermer:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.tableau-resultats-body {
+  overflow-x: auto;
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: var(--couleur-active, #c0392b) transparent;
+}
+
+.tableau-resultats-body::-webkit-scrollbar {
+  height: 5px;
+  width: 5px;
+}
+
+.tableau-resultats-body::-webkit-scrollbar-thumb {
+  background: var(--couleur-active, #c0392b);
+  border-radius: 3px;
+}
+
+/* Tableau des données résultats */
+.tableau-data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  min-width: 900px;
+}
+
+.tableau-data thead tr {
+  background: #f5f5f5;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.tableau-data th {
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.7rem;
+  color: #444;
+  border-bottom: 1px solid #ddd;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tableau-data td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #f0f0f0;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tableau-data tr:hover td {
+  background: #fef5f5;
+  cursor: pointer;
+}
+
+.tableau-data tr:nth-child(odd) td {
+  background: #fafafa;
+}
+
+.tableau-data tr:nth-child(odd):hover td {
+  background: #fef5f5;
+}
+
+.tableau-data td a {
+  color: var(--couleur-active, #c0392b);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.tableau-data td a:hover {
+  text-decoration: underline;
+}
+
+.tableau-vide {
+  padding: 20px;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.app-footer {
+  position: fixed;
+  background-color: rgba(244, 244, 244);
+  bottom: 0;
+  left: var(--sidebar-collapsed-width);
+  right: 0;
+  z-index: 500;
+  transition: left var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Quand la sidebar est étendue, le footer se décale pour rester
+   visible à  droite du panneau ouvert (sélecteur sibling CSS). */
+.sidebar-panel.expanded ~ .map-container ~ .app-footer {
+  left: var(--sidebar-expanded-width);
+}
+
+/* Disposition horizontale centrée des éléments du footer
+   (échelle, coordonnées, projection...) */
+.footer-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  height: 100%;
+  line-height: 1;
+}
+.echelle-select,
+.projection-selector select {
+  height: 18px;
+  font-size: 0.5rem;
+  padding: 0;
+}
+
+/* ============================================
+   ECHELLE NUMERIQUE
+   Bloc affiché dans le footer permettant de choisir l'échelle
+   cartographique via un <select>. Le label et le select sont
+   alignés horizontalement sur une seule ligne.
+   ============================================ */
+.echelle-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px;
+  border-radius: 4px;
+}
+
+.echelle-label {
+  font-size: 0.5rem;
+  font-weight: 600;
+  color: #444444;
+  white-space: nowrap;
+}
+
+.echelle-select {
+  padding: 1px;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  font-size: 0.5rem;
+  background: #fff;
+  color: #202020;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 100px;
+}
+
+/* ============================================
+   AFFICHAGE COORDONNEES
+   Zone du footer qui affiche en temps réel les coordonnées
+   géographiques du curseur sur la carte.
+   - .coordonnees-container   : conteneur flex horizontal global
+   - .projection-selector     : menu de choix du système de projection
+   - .affichage-coordonnee    : champ lecture seule (police monospace
+                                pour aligner les chiffres)
+   - ::empty::before          : texte d'invite quand aucune coord n'est
+                                encore disponible (avant 1er survol)
+   ============================================ */
+.coordonnees-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.projection-selector select {
+  padding: 1px;
+  border: 1px solid rgba(83, 83, 83, 0.322);
+  border-radius: 4px;
+  background: #fff;
+  color: #010101;
+  cursor: pointer;
+  width: auto;
+}
+
+/* Effet hover sur les options (support limité selon navigateurs) */
+.projection-selector select option:hover {
+  background: var(--couleur-hover);
+  color: white;
+}
+
+.affichage-coordonnee {
+  background: #fff;
+  padding: 1px;
+  border-radius: 4px;
+  border: 1px solid rgb(204, 203, 203);
+  font-family: "Courier New", monospace;
+  font-size: 0.5rem;
+  color: #040404;
+  font-weight: 600;
+  min-width: 160px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Texte placeholder affiché avant le 1er survol de la carte */
+.affichage-coordonnee:empty::before {
+  content: "Survolez la carte";
+  color: #141414;
+  font-style: italic;
+}
+
+/* ============================================
+   ANIMATIONS KEYFRAMES
+   - slideIn  : entrée du contenu d'un panneau (glissement du bas + fondu)
+   - fadeIn   : apparition de l'overlay modal (fondu simple)
+   ============================================ */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* ============================================
+   UTILITAIRES
+   Classes utilitaires à  application directe via JS.
+   .hidden  -> masque complètement un élément (!important pour surcharger tout style)
+   .visible -> force l'affichage en bloc (!important)
+   ============================================ */
+.hidden {
+  display: none !important;
+}
+
+.visible {
+  display: block !important;
+}
+
+/* ------------------------------------------------------------------
+   LOGO INRAP
+   Le logo est positionné en bas de la toolbar (margin-top:auto
+   dans un flex column pousse l'élément tout en bas).
+   L'opacité diminuée (0.8) est renforcée au survol (1.0).
+   ------------------------------------------------------------------ */
+.sidebar-toolbar .logo-inrap {
+  margin-top: auto;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-toolbar .logo-inrap img {
+  width: 40px;
+  height: auto;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.sidebar-toolbar .logo-inrap img:hover {
+  opacity: 1;
+}
+
+/* ============================================
+   OPTIMISATIONS DE COMPACITE -- AJOUTS 2025
+   Ensemble de surcharges appliquées globalement (sans media query)
+   pour rendre l'interface plus compacte et cohérente sur desktop.
+   Ces règles s'appliquent après les déclarations de base et les
+   affinent : espacements réduits, tailles de police harmonisées,
+   hauteurs de champs normalisées via les variables CSS de :root.
+   ============================================ */
+/* Toolbar plus compacte */
+.sidebar-toolbar {
+  padding: 8px 0;
+  gap: 4px;
+}
+
+.toolbar-icon {
+  padding: 6px;
+  margin: 2px 0;
+}
+
+.toolbar-icon img {
+  width: 22px;
+  height: 22px;
+}
+
+.sidebar-toolbar .logo-inrap img {
+  width: 32px;
+}
+
+/* Panneaux plus compacts */
+.panel-header {
+  padding: var(--padding-panel) var(--padding-panel) 12px;
+  font-size: 1.1rem;
+  border-bottom: 2px solid var(--couleur-active);
+  min-height: var(--header-height);
+  display: flex;
+  align-items: center;
+}
+
+.panel-body {
+  padding: var(--padding-panel);
+}
+
+/* Formulaires optimisés */
+.form-group {
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.form-group label {
+  font-size: 0.8rem;
+  margin-bottom: 2px;
+}
+
+.form-group input,
+.form-group select {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  height: var(--input-height);
+}
+
+.form-actions {
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.form-actions button,
+.btn-primary,
+.btn-secondary {
+  height: var(--input-height);
+  padding: 6px 14px;
+  font-size: 0.85rem;
+}
+
+/* Sections d'aide compactes */
+.help-section {
+  margin-bottom: 18px;
+}
+
+.help-section h4 {
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+}
+
+.help-section li {
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* Géocodage compact */
+.geocodage input {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.geocodage button {
+  width: 40px;
+  height: 40px;
+}
+
+.resultat-geocodage li {
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+
+/* Liste de couches compacte */
+.custom-layer-switcher li {
+  padding: 6px;
+  margin: 4px 0;
+  font-size: 0.8rem;
+}
+
+/* Outils d'édition compacts */
+.edition-tools {
+  gap: 6px;
+}
+
+.edition-tool-btn {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  min-height: var(--input-height);
+}
+
+/* Numérisation enrichie — tablette */
+.num-tools-grid { grid-template-columns: repeat(4, 1fr); gap: 5px; padding: 8px; }
+.num-tool { padding: 6px 3px; min-height: 50px; border-radius: 6px; }
+.num-tool img, .num-tool svg { width: 17px; height: 17px; }
+.num-tool span { font-size: 0.52rem; }
+.num-info { padding: 7px 10px; }
+.num-info-text { font-size: 0.70rem; }
+.num-section-title { font-size: 0.70rem; padding: 6px 9px; }
+.num-style-row label { font-size: 0.68rem; }
+.num-export-btn, .num-btn-danger { font-size: 0.70rem; padding: 6px 8px; }
+
+/* Footer compact */
+.footer-content {
+  padding: 4px 12px;
+  gap: 12px;
+}
+
+.echelle-label {
+  font-size: 0.65rem;
+}
+
+.echelle-select {
+  padding: 3px 8px;
+  font-size: 0.65rem;
+  min-width: 90px;
+}
+
+.affichage-coordonnee {
+  padding: 3px 8px;
+  font-size: 0.65rem;
+  min-width: 140px;
+}
+
+.projection-selector select {
+  padding: 3px 8px;
+  font-size: 0.65rem;
+}
+
+/* Contrôles de zoom compacts */
+.zoom-btn {
+  width: 28px;
+  height: 28px;
+  font-size: 20px;
+}
+
+/* Scrollbars plus fines */
+.resultat-geocodage::-webkit-scrollbar,
+.panel-body::-webkit-scrollbar {
+  width: 5px;
+}
+
+/* Formulaire de recherche */
+.frm-recherche {
+  gap: 10px;
+}
+
+/* Légende compacte */
+.legend-content {
+  padding: 10px;
+}
+
+.legend-item {
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.legend-label {
+  font-size: 0.8rem;
+}
+
+/* Transitions globales appliquées sur les éléments principaux de l'UI
+   pour garantir un rendu fluide lors des changements d'état ou de breakpoint */
+.toolbar-icon,
+.panel-header,
+.panel-body,
+.form-group input,
+.form-group select,
+.footer-content {
+  transition: all 0.2s ease;
+}
+
+/* ============================================
+   RESPONSIVE OPTIMISÉ -- TABLETTE (769px-1024px)
+   Surcharges détaillées pour tablette : réduction des dimensions de
+   la sidebar, de la toolbar, des panneaux, des formulaires, du géocodage,
+   des couches et de la légende. Ces règles complètent les optimisations
+   de compacité 2025 pour ce point de rupture spécifique.
+   ============================================ */
+
+/* ============================================================
+   TABLETTE (769px–1024px) — 75 % des dimensions desktop
+   Tous les éléments × 0.75
+   toolbar-icon 35px→26px | input height 32px→24px
+   font labels 0.75rem→0.56rem | padding panel 15px→11px
+   ============================================================ */
+@media (min-width: 769px) and (max-width: 1024px) {
+  :root {
+    --sidebar-expanded-width:  calc(350px * 0.75); /* 263px */
+    --sidebar-collapsed-width: 38px;               /* 50px × 0.75 */
+    --padding-panel:           11px;               /* 15px × 0.75 */
+    --toolbar-icon-size:       26px;               /* 35px × 0.75 */
+    --input-height:            24px;               /* 32px × 0.75 */
+    --header-height:           38px;               /* 50px × 0.75 */
+  }
+
+  /* ── SIDEBAR & STRUCTURE ── */
+  .sidebar-panel.expanded {
+    width: var(--sidebar-expanded-width);
+  }
+  .map-container.retracted {
+    margin-left: calc(var(--sidebar-expanded-width) - var(--sidebar-collapsed-width));
+  }
+  .app-footer {
+    left: var(--sidebar-collapsed-width);
+  }
+  .sidebar-panel.expanded ~ .map-container ~ .app-footer {
+    left: var(--sidebar-expanded-width);
+  }
+  .sidebar-content {
+    width: calc(var(--sidebar-expanded-width) - var(--sidebar-collapsed-width));
+  }
+  .tableau-resultats {
+    left: var(--sidebar-collapsed-width);
+    max-height: calc(280px * 0.75); /* 210px */
+  }
+  .sidebar-panel.expanded ~ .tableau-resultats {
+    left: var(--sidebar-expanded-width);
+  }
+
+  /* ── TOOLBAR ── */
+  .sidebar-toolbar {
+    width: var(--sidebar-collapsed-width);
+    padding: 6px 0;
+    gap: 3px;
+  }
+  .toolbar-icon {
+    width:  26px;   /* 35px × 0.75 */
+    height: 26px;
+    padding: 5px;
+    margin: 2px 0;
+    border-radius: 6px;
+    border-width: 2px;
+    top: 38px;      /* 50px × 0.75 */
+  }
+  .toolbar-icon img {
+    width:  17px;   /* 22px × 0.75 */
+    height: 17px;
+  }
+  .sidebar-toolbar .logo-inrap img {
+    width: 24px;    /* 32px × 0.75 */
+  }
+
+
+  /* ── PANNEAUX ── */
+  .panel-header {
+    font-size: 0.83rem;   /* 1.1rem × 0.75 */
+    padding: 8px 11px 9px;
+    min-height: 38px;
+  }
+  .panel-body {
+    padding: var(--padding-panel);
+  }
+  /* ── BOUTON FERMETURE PANNEAU (× 0.75) ── */
+  .close-panel-btn {
+    width:      20px;   /* 18px × 0.75 */
+    height:     20px;
+    font-size:  11px;   /* 14px × 0.75 → arrondi */
+    top:        11px;   /* 15px × 0.75 */
+    right:      11px;
+    border-radius: 4px;
+  }
+
+  /* ── ONGLETS COUCHES ── */
+  .couches-tabs {
+    padding: 0 8px;
+    gap: 3px;
+  }
+  .couches-tab {
+    padding: 6px 8px;   /* 8px 10px × 0.75 */
+    font-size: 0.62rem; /* 0.82rem × 0.75 */
+    gap: 5px;
+  }
+
+  /* ── FORMULAIRES ── */
+  .form-group {
+    gap: 2px;
+    margin-bottom: 7px;
+  }
+  .form-group label {
+    font-size: 0.56rem; /* 0.75rem × 0.75 */
+  }
+  .form-group input,
+  .form-group select,
+  .form-group input[type="text"],
+  .form-group input[type="date"],
+  .form-group input[list] {
+    font-size: 0.60rem; /* 0.8rem × 0.75 */
+    padding: 4px 6px;
+    height: 24px;       /* 32px × 0.75 */
+  }
+  .form-actions {
+    gap: 5px;
+    margin-top: 8px;
+  }
+  .btn-primary,
+  .btn-secondary,
+  .form-actions button {
+    padding: 4px 8px;
+    font-size: 0.56rem;
+    min-height: 24px;
+    height: 24px;
+  }
+
+  /* ── BOUTON RECHERCHE ── */
+  .btn-recherche {
+    padding: 4px 8px;
+    font-size: 0.60rem;
+    height: 24px;
+  }
+  .frm-recherche { gap: 6px; }
+
+  /* ── AIDE ── */
+  .help-section { margin-bottom: 13px; }
+  .help-section h4 {
+    font-size: 0.68rem; /* 0.9rem × 0.75 */
+    margin-bottom: 5px;
+  }
+  .help-section li {
+    font-size: 0.60rem; /* 0.8rem × 0.75 */
+    margin-bottom: 5px;
+    line-height: 1.4;
+  }
+
+  /* ── GÉOCODAGE ── */
+  .geocodage-container { gap: 9px; }  /* 15px × 0.75 → mais compact */
+  .geocodage input {
+    padding: 6px 9px;
+    font-size: 0.60rem;
+    height: 36px;       /* 48px × 0.75 */
+  }
+  .geocodage button {
+    width:  36px;
+    height: 36px;
+  }
+  .bouton-geocodage {
+    width:  17px;   /* 23px × 0.75 */
+    height: 17px;
+  }
+  .resultat-geocodage li {
+    padding: 6px 8px;
+    margin-bottom: 5px;
+    font-size: 0.56rem;
+  }
+
+  /* ── GESTION DES COUCHES ── */
+  .content-panel[data-panel-content="couches"] .panel-body {
+    padding: 8px;
+    gap: 6px;
+  }
+  .custom-layer-switcher { padding-right: 4px; }
+  .layer-group-header {
+    padding: 7px 9px;   /* 12px 15px × 0.75 → ajusté */
+    padding-right: 23px;
+    gap: 5px;
+  }
+  .group-title  { font-size: 0.60rem; } /* 0.95rem × 0.75 → ajusté */
+  .group-checkbox {
+    width:  15px;   /* 20px × 0.75 */
+    height: 15px;
+  }
+  .group-checkbox::before { font-size: 10px; } /* 12px × 0.75 → arrondi */
+  .group-toggle { font-size: 0.60rem; min-width: 9px; }
+  .group-toggle::before { font-size: 9px; }    /* 12px × 0.75 */
+  .layer-item {
+    padding: 6px 9px 6px 20px; /* 10px 15px 10px 35px × 0.75 → ajusté */
+    gap: 5px;
+  }
+  .layer-item label { font-size: 0.56rem; } /* 0.85rem × 0.75 → ajusté */
+  .layer-item input[type="checkbox"] {
+    width:  16px;   /* 22px × 0.75 */
+    height: 16px;
+  }
+  .layer-item input[type="checkbox"]::before { font-size: 9px; }
+  .opacity-control { gap: 5px; }
+  .opacity-label {
+    font-size: 0.49rem; /* 0.75rem × 0.75 → ajusté */
+    min-width: 38px;    /* 50px × 0.75 */
+  }
+  .opacity-slider { height: 3px; }
+  .opacity-slider::-webkit-slider-thumb {
+    width:  11px;   /* 14px × 0.75 */
+    height: 11px;
+  }
+  .opacity-value {
+    font-size: 0.49rem;
+    min-width: 19px;    /* 25px × 0.75 */
+  }
+  .layer-table-btn,
+  .layer-delete-btn {
+    font-size: 0.49rem;
+    padding: 3px 6px;
+  }
+
+  /* ── ÉDITION ── */
+  .edition-tools { gap: 7px; margin-bottom: 12px; } /* 12px × 0.75 → ajusté */
+  .edit-tool {
+    width:  30px;   /* 40px × 0.75 */
+    height: 30px;
+    border-radius: 6px;
+  }
+  .edit-tool img {
+    width:  23px;   /* 30px × 0.75 */
+    height: 23px;
+  }
+  .edit-tool.symbol-cross img {
+    width:  14px;   /* 18px × 0.75 */
+    height: 14px;
+  }
+  .edit-tool.symbol-modify img {
+    width:  19px;   /* 25px × 0.75 */
+    height: 19px;
+  }
+  .edition-info { padding: 11px; }
+  .edition-info p { font-size: 0.60rem; }
+  .edition-tool-btn {
+    padding: 6px 9px;
+    font-size: 0.56rem;
+    min-height: 27px;
+  }
+
+  /* ── NUMÉRISATION ENRICHIE — mobile 768px ── */
+  .num-tools-grid { gap: 4px; padding: 6px; }
+  .num-tool { padding: 5px 2px; min-height: 44px; border-radius: 5px; border-width: 1px; }
+  .num-tool img, .num-tool svg { width: 15px; height: 15px; }
+  .num-tool span { font-size: 0.47rem; }
+  .num-info { padding: 6px 8px; }
+  .num-info-text { font-size: 0.63rem; }
+  .num-section-title { font-size: 0.63rem; padding: 5px 8px; }
+  .num-style-row label { font-size: 0.60rem; }
+  .num-style-row--range { width: 100%; }
+  .num-range-wrap { gap: 5px; width: 100%; min-width: 0; }
+  .num-range-wrap input[type="range"] { min-width: 0; width: 0; }
+  .num-range-val { font-size: 0.55rem; min-width: 28px; }
+  .num-export-btns { gap: 5px; }
+  .num-export-btn, .num-btn-danger { font-size: 0.63rem; padding: 5px 7px; }
+
+  /* ── EXPORT & POPUP ── */
+  .btn-export {
+    padding: 8px 14px;  /* 10px 18px × 0.75 → ajusté */
+    font-size: 0.69rem; /* 0.92rem × 0.75 */
+    gap: 6px;
+  }
+  .btn-export img {
+    width:  14px;   /* 18px × 0.75 */
+    height: 15px;
+  }
+  .popup {
+    padding: 1px 12px;
+    min-height: 90px;   /* 120px × 0.75 */
+  }
+  .popup-placeholder {
+    padding: 18px 8px;  /* 24px × 0.75 */
+    font-size: 0.66rem; /* 0.88rem × 0.75 */
+  }
+  .tableauEl {
+    font-size: 0.56rem; /* 0.75rem × 0.75 */
+    margin-bottom: 11px;
+    margin-top: 11px;
+  }
+  .tableauEl td {
+    padding: 8px 9px;   /* 10px 12px × 0.75 */
+  }
+  .tableauEl .attr-label { font-size: 0.56rem; }
+  .popup-nav { padding: 4px 2px 5px; }
+  .popup-nav-label { font-size: 0.60rem; }
+  .popup-nav-btn {
+    width:  20px;   /* 26px × 0.75 */
+    height: 20px;
+    font-size: 0.75rem;
+    border-radius: 3px;
+  }
+  .popup-nav-export {
+    width:  60px;   /* 80px × 0.75 */
+    height: 20px;   /* 26px × 0.75 */
+    padding: 2px;
+    gap: 3px;
+    border-radius: 3px;
+    font-size: 0.54rem;   /* 0.72rem × 0.75 */
+  }
+  .popup-nav-export img {
+    width:  11px;   /* 14px × 0.75 */
+    height: 11px;
+  }
+
+  /* ── TABLEAU RÉSULTATS ── */
+  .tableau-resultats-header {
+    padding: 4px 9px;
+    min-height: 23px;   /* 30px × 0.75 */
+    gap: 8px;
+  }
+  .tableau-resultats-titre { font-size: 0.60rem; }
+  .tableau-resultats-count { font-size: 0.56rem; }
+  .tableau-resultats-fermer { font-size: 0.75rem; padding: 2px 3px; }
+  .tableau-data { font-size: 0.56rem; }
+  .tableau-data th {
+    padding: 5px 8px;   /* 6px 10px × 0.75 */
+    font-size: 0.53rem; /* 0.7rem × 0.75 */
+  }
+  .tableau-data td {
+    padding: 4px 8px;   /* 5px 10px × 0.75 */
+    max-width: 150px;
+  }
+  .tableau-vide {
+    padding: 15px;
+    font-size: 0.64rem;
+  }
+
+  /* ── LÉGENDE ── */
+  .legend-group { margin-bottom: 5px; }
+  .legend-group-title {
+    font-size: 0.59rem; /* 0.78rem × 0.75 */
+    padding: 5px 8px;
+    gap: 5px;
+  }
+  .legend-group-items { padding: 5px 8px; gap: 2px; }
+  .legend-item {
+    gap: 8px;
+    padding: 2px 0;
+  }
+  .legend-symbol { width: 23px; }    /* 30px × 0.75 */
+  .legend-icon-fa {
+    width:  21px;   /* 28px × 0.75 */
+    height: 14px;
+    font-size: 0.83rem;
+  }
+  .legend-label  { font-size: 0.62rem; } /* 0.82rem × 0.75 */
+  .legend-label--couche { font-size: 0.62rem; }
+  .legend-empty  { font-size: 0.64rem; padding: 18px 9px; }
+  .legend-content { padding: 6px; gap: 5px; }
+  .rapport-rendu-symbol {
+    font-size: 8px;     /* 11px × 0.75 */
+    padding: 2px 6px;
+    min-width: 24px;    /* 32px × 0.75 */
+    min-height: 14px;   /* 18px × 0.75 */
+    line-height: 3;
+  }
+
+  /* ── FOOTER (row conservé, × 0.75) ── */
+  .footer-content {
+    flex-direction: row;
+    gap:     8px;   /* 10px × 0.75 */
+    flex-wrap: wrap;
+  }
+  .echelle-container { gap: 5px; }   /* 6px × 0.75 → 4.5 → 5px */
+  .echelle-label    { font-size: 0.375rem; }  /* 0.5rem × 0.75 */
+  .echelle-select {
+    font-size: 0.375rem;
+    height:    14px;    /* 18px × 0.75 → arrondi */
+    min-width: 75px;    /* 100px × 0.75 */
+  }
+  .coordonnees-container { gap: 8px; }  /* 10px × 0.75 */
+  .projection-selector select { font-size: 0.375rem; }
+  .affichage-coordonnee {
+    font-size: 0.375rem;
+    min-width: 120px;   /* 160px × 0.75 */
+  }
+
+  /* ── ZOOM ── */
+  .zoom-btn {
+    width:  23px;
+    height: 23px;
+    font-size: 18px;
+  }
+
+  /* ── SCROLLBARS ── */
+  .resultat-geocodage::-webkit-scrollbar,
+  .panel-body::-webkit-scrollbar { width: 5px; }
+}
+
+/* ============================================
+   RESPONSIVE OPTIMISÉ -- MOBILE (<=768px)
+   Surcharges détaillées pour smartphones : toutes les sections
+   (toolbar, panneaux, formulaires, géocodage, couches, footer, légende)
+   sont réduites de manière coordonnée pour s'adapter aux petits écrans.
+   Le géocodage passe en colonne (input au-dessus du bouton loupe).
+   ============================================ */
+
+/* ============================================================
+   MOBILE (≤768px) — 60 % des dimensions desktop
+   Tous les éléments × 0.60
+   toolbar-icon 35px→21px | input height 32px→19px
+   font labels 0.75rem→0.45rem | padding panel 15px→9px
+   Footer : flex-direction row conservé
+   ============================================================ */
+@media (max-width: 768px) {
+  :root {
+    --padding-panel:           9px;               /* 15px × 0.60 */
+    --sidebar-expanded-width:  calc(350px * 0.60); /* 210px */
+    --sidebar-collapsed-width: 35px;               /* 50px × 0.60 */
+    --toolbar-icon-size:       21px;               /* 35px × 0.60 */
+    --input-height:            19px;               /* 32px × 0.60 */
+    --header-height:           30px;               /* 50px × 0.60 */
+  }
+
+  /* ── SIDEBAR & STRUCTURE ── */
+  .sidebar-panel.expanded {
+    width: var(--sidebar-expanded-width);
+  }
+  .map-container.retracted {
+    margin-left: calc(var(--sidebar-expanded-width) - var(--sidebar-collapsed-width));
+  }
+  .app-footer { left: 0; }
+  .sidebar-panel.expanded ~ .map-container ~ .app-footer {
+    left: var(--sidebar-expanded-width);
+  }
+  .sidebar-content {
+    width: calc(var(--sidebar-expanded-width) - var(--sidebar-collapsed-width));
+  }
+  .tableau-resultats {
+    left: 0;
+    max-height: calc(280px * 0.60); /* 168px */
+  }
+  .sidebar-panel.expanded ~ .tableau-resultats {
+    left: var(--sidebar-expanded-width);
+  }
+
+  /* ── TOOLBAR ── */
+  .sidebar-toolbar {
+    width: var(--sidebar-collapsed-width);
+    padding: 5px 0;
+    gap: 3px;
+  }
+  .toolbar-icon {
+    width:  21px;   /* 35px × 0.60 */
+    height: 21px;
+    padding: 4px;
+    margin: 1px 0;
+    border-radius: 5px;
+    border-width: 2px;
+    top: 30px;      /* 50px × 0.60 */
+  }
+  .toolbar-icon img {
+    width:  13px;   /* 22px × 0.60 */
+    height: 13px;
+  }
+  .sidebar-toolbar .logo-inrap img {
+    width: 19px;    /* 32px × 0.60 */
+  }
+
+  /* ── PANNEAUX ── */
+  .panel-header {
+    font-size: 0.66rem;   /* 1.1rem × 0.60 */
+    padding: 6px 9px 7px;
+    min-height: 30px;
+  }
+  .panel-body { padding: var(--padding-panel); }
+  /* ── BOUTON FERMETURE PANNEAU (× 0.60) ── */
+  .close-panel-btn {
+    width:      13px;   /* 18px × 0.60 */
+    height:     15px;
+    font-size:   8px;   /* 14px × 0.60 → arrondi */
+    top:         9px;   /* 15px × 0.60 */
+    right:       9px;
+    border-radius: 2px;
+  }
+
+  /* ── ONGLETS COUCHES ── */
+  .couches-tabs {
+    padding: 0 5px;
+    gap: 2px;
+  }
+  .couches-tab {
+    padding: 5px 6px;   /* 8px 10px × 0.60 */
+    font-size: 0.49rem; /* 0.82rem × 0.60 */
+    gap: 4px;
+    border-bottom-width: 2px;
+  }
+
+  /* ── FORMULAIRES ── */
+  .form-group {
+    gap: 2px;
+    margin-bottom: 5px;
+  }
+  .form-group label {
+    font-size: 0.45rem; /* 0.75rem × 0.60 */
+  }
+  .form-group input,
+  .form-group select,
+  .form-group input[type="text"],
+  .form-group input[type="date"],
+  .form-group input[list] {
+    font-size: 0.48rem; /* 0.80rem × 0.60 */
+    padding: 3px 5px;
+    height: 19px;       /* 32px × 0.60 */
+  }
+  .form-actions {
+    gap: 4px;
+    margin-top: 5px;
+  }
+  .btn-primary,
+  .btn-secondary,
+  .form-actions button {
+    padding: 3px 7px;
+    font-size: 0.45rem;
+    min-height: 19px;
+    height: 19px;
+  }
+
+  /* ── BOUTON RECHERCHE ── */
+  .btn-recherche {
+    padding: 3px 7px;
+    font-size: 0.48rem;
+    height: 19px;
+  }
+  .frm-recherche { gap: 5px; }
+
+  /* ── AIDE ── */
+  .help-section { margin-bottom: 10px; }
+  .help-section h4 {
+    font-size: 0.54rem; /* 0.9rem × 0.60 */
+    margin-bottom: 4px;
+  }
+  .help-section li {
+    font-size: 0.48rem; /* 0.80rem × 0.60 */
+    margin-bottom: 3px;
+    line-height: 1.35;
+  }
+
+  /* ── GÉOCODAGE ── */
+  .geocodage-container {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+  .geocodage {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+  }
+  .geocodage input {
+    padding: 5px 7px;
+    font-size: 0.48rem;
+    width: 100%;
+    height: 29px;       /* 48px × 0.60 */
+  }
+  .geocodage button {
+    width:  29px;
+    height: 29px;
+  }
+  .bouton-geocodage {
+    width:  14px;   /* 23px × 0.60 */
+    height: 14px;
+  }
+  .resultat-geocodage { max-height: 240px; }
+  .resultat-geocodage li {
+    padding: 5px 6px;
+    margin-bottom: 3px;
+    font-size: 0.42rem; /* 0.70rem × 0.60 */
+  }
+
+  /* ── GESTION DES COUCHES ── */
+  .content-panel[data-panel-content="couches"] .panel-body {
+    padding: 6px;
+    gap: 5px;
+  }
+  .custom-layer-switcher {
+    max-height: calc(100vh - 160px);
+    padding-right: 2px;
+  }
+  .custom-layer-switcher::-webkit-scrollbar { width: 4px; }
+  .layer-group-header {
+    padding: 5px 7px;
+    padding-right: 18px;
+    gap: 4px;
+  }
+  .group-title  { font-size: 0.48rem; }
+  .group-checkbox {
+    width:  12px;   /* 20px × 0.60 */
+    height: 12px;
+  }
+  .group-checkbox::before { font-size: 8px; }
+  .group-toggle { font-size: 0.48rem; min-width: 7px; }
+  .group-toggle::before { font-size: 7px; }
+  .layer-item {
+    padding: 4px 6px 4px 15px;
+    gap: 3px;
+  }
+  .layer-item label { font-size: 0.42rem; }
+  .layer-item input[type="checkbox"] {
+    width:  12px;
+    height: 12px;
+  }
+  .layer-item input[type="checkbox"]::before { font-size: 8px; }
+  .opacity-control {
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .opacity-label {
+    font-size: 0.39rem; /* 0.65rem × 0.60 */
+    min-width: 30px;    /* 50px × 0.60 */
+  }
+  .opacity-slider {
+    height: 2px;
+    flex: 1;
+    min-width: 65px;
+  }
+  .opacity-slider::-webkit-slider-thumb {
+    width:  8px;    /* 14px × 0.60 */
+    height: 8px;
+  }
+  .opacity-value {
+    font-size: 0.39rem;
+    min-width: 15px;
+  }
+  .layer-table-btn,
+  .layer-delete-btn {
+    font-size: 0.39rem;
+    padding: 2px 4px;
+  }
+
+  /* ── NUMÉRISATION ENRICHIE — mobile 768px ── */
+  .num-panel-body { gap: 6px; padding: 4px 7px 7px; }
+  .num-tools-grid { grid-template-columns: repeat(4, 1fr); gap: 3px; padding: 5px; }
+  .num-tool { padding: 4px 2px; min-height: 40px; border-radius: 5px; gap: 2px; }
+  .num-tool img, .num-tool svg { width: 13px; height: 13px; }
+  .num-tool span { font-size: 0.42rem; }
+  .num-info { padding: 5px 8px; }
+  .num-info-text { font-size: 0.58rem; }
+  .num-section-title { font-size: 0.58rem; padding: 5px 7px; }
+  .num-style-row label { font-size: 0.54rem; }
+  .num-style-row input[type="color"] { width: 28px; height: 22px; }
+  .num-style-row--range { width: 100%; }
+  .num-range-wrap { gap: 4px; width: 100%; min-width: 0; }
+  .num-range-wrap input[type="range"] { min-width: 0; width: 0; }
+  .num-range-val { font-size: 0.50rem; min-width: 28px; }
+  .num-drop-zone { padding: 10px 8px; }
+  .num-drop-icon { font-size: 1.3rem; }
+  .num-drop-zone span { font-size: 0.52rem; }
+  .num-export-btns { gap: 5px; }
+  .num-export-btn, .num-btn-danger { font-size: 0.56rem; padding: 5px 7px; }
+
+  /* ── ÉDITION ── */
+  .edition-tools {
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+  .edit-tool {
+    width:  24px;   /* 40px × 0.60 */
+    height: 24px;
+    border-radius: 5px;
+  }
+  .edit-tool img {
+    width:  18px;   /* 30px × 0.60 */
+    height: 18px;
+  }
+  .edit-tool.symbol-cross img {
+    width:  11px;   /* 18px × 0.60 */
+    height: 11px;
+  }
+  .edit-tool.symbol-modify img {
+    width:  15px;   /* 25px × 0.60 */
+    height: 15px;
+  }
+  .edition-info { padding: 9px; }
+  .edition-info p { font-size: 0.48rem; }
+  .edition-tool-btn {
+    padding: 4px 6px;
+    font-size: 0.42rem;
+    min-height: 21px;
+  }
+
+  /* ── EXPORT & POPUP ── */
+  .btn-export {
+    padding: 6px 11px;
+    font-size: 0.55rem; /* 0.92rem × 0.60 */
+    gap: 5px;
+  }
+  .btn-export img {
+    width:  11px;   /* 18px × 0.60 */
+    height: 12px;
+  }
+  .popup {
+    padding: 1px 10px;
+    min-height: 72px;   /* 120px × 0.60 */
+  }
+  .popup-placeholder {
+    padding: 14px 6px;
+    font-size: 0.53rem; /* 0.88rem × 0.60 */
+  }
+  .tableauEl {
+    font-size: 0.45rem; /* 0.75rem × 0.60 */
+    margin-bottom: 9px;
+    margin-top: 9px;
+  }
+  .tableauEl td {
+    padding: 6px 7px;   /* 10px 12px × 0.60 */
+  }
+  .tableauEl .attr-label { font-size: 0.45rem; }
+  .popup-nav { padding: 3px 1px 4px; }
+  .popup-nav-label { font-size: 0.48rem; }
+  .popup-nav-btn {
+    width:  16px;   /* 26px × 0.60 */
+    height: 16px;
+    font-size: 0.60rem;
+    border-radius: 2px;
+  }
+  .popup-nav-export {
+    width:  48px;   /* 80px × 0.60 */
+    height: 16px;   /* 26px × 0.60 */
+    padding: 2px;
+    gap: 3px;
+    border-radius: 2px;
+    font-size: 0.43rem;   /* 0.72rem × 0.60 */
+  }
+  .popup-nav-export img {
+    width:  9px;    /* 14px × 0.60 */
+    height: 9px;
+  }
+
+  /* ── TABLEAU RÉSULTATS ── */
+  .tableau-resultats-header {
+    padding: 3px 7px;
+    min-height: 18px;   /* 30px × 0.60 */
+    gap: 6px;
+  }
+  .tableau-resultats-titre { font-size: 0.48rem; }
+  .tableau-resultats-count { font-size: 0.45rem; }
+  .tableau-resultats-fermer { font-size: 0.60rem; padding: 1px 2px; }
+  .tableau-data { font-size: 0.45rem; }
+  .tableau-data th {
+    padding: 4px 6px;
+    font-size: 0.42rem; /* 0.70rem × 0.60 */
+  }
+  .tableau-data td {
+    padding: 3px 6px;
+    max-width: 120px;
+  }
+  .tableau-vide {
+    padding: 12px;
+    font-size: 0.51rem;
+  }
+
+  /* ── LÉGENDE ── */
+  .legend-group { margin-bottom: 4px; }
+  .legend-group-title {
+    font-size: 0.47rem; /* 0.78rem × 0.60 */
+    padding: 4px 6px;
+    gap: 4px;
+  }
+  .legend-group-items { padding: 4px 6px; gap: 1px; }
+  .legend-item {
+    gap: 6px;
+    padding: 2px 0;
+  }
+  .legend-symbol { width: 18px; }    /* 30px × 0.60 */
+  .legend-icon-fa {
+    width:  17px;   /* 28px × 0.60 */
+    height: 11px;
+    font-size: 0.66rem;
+  }
+  .legend-label  { font-size: 0.49rem; } /* 0.82rem × 0.60 */
+  .legend-label--couche { font-size: 0.49rem; }
+  .legend-empty  { font-size: 0.51rem; padding: 14px 7px; }
+  .legend-content { padding: 5px; gap: 4px; }
+  .rapport-rendu-symbol {
+    font-size: 7px;     /* 11px × 0.60 → arrondi */
+    padding: 1px 5px;
+    min-width: 19px;    /* 32px × 0.60 */
+    min-height: 11px;   /* 18px × 0.60 */
+    line-height: 2.5;
+  }
+
+  /* ── ZOOM ── */
+  .zoom-btn {
+    width:  18px;
+    height: 18px;
+    font-size: 14px;
+  }
+
+  /* ── SCROLLBARS ── */
+  .resultat-geocodage::-webkit-scrollbar,
+  .panel-body::-webkit-scrollbar { width: 4px; }
+
+  /* ── FOOTER (row conservé, × 0.75) ── */
+  .footer-content {
+    flex-direction: row;
+    gap:     8px;   /* 10px × 0.75 */
+    flex-wrap: wrap;
+  }
+  .echelle-container { gap: 5px; }   /* 6px × 0.75 → 4.5 → 5px */
+  .echelle-label    { font-size: 0.5rem; }  /* 0.5rem × 0.75 */
+  .echelle-select {
+    font-size: 0.5rem;
+    height:    19px;    /* 18px × 0.75 → arrondi */
+    min-width: 75px;    /* 100px × 0.75 */
+  }
+  .coordonnees-container { gap: 8px; }  /* 10px × 0.75 */
+  .projection-selector select { font-size: 0.5rem; }
+  .affichage-coordonnee {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.5rem;
+    height:    19px;
+    min-width: 120px;   /* 160px × 0.75 */
+  }
+
+  /* ── ZOOM ── */
+  .zoom-btn {
+    width:  23px;
+    height: 23px;
+    font-size: 18px;
+  }
+
+  /* ── SCROLLBARS ── */
+  .resultat-geocodage::-webkit-scrollbar,
+  .panel-body::-webkit-scrollbar { width: 5px; }
+}
+/* ============================================
+   Point de rupture extrême pour les écrans <=480px (vieux smartphones).
+   Toutes les dimensions sont réduites au minimum utilisable :
+   icônes 28px, polices 0.5-0.7rem, paddings minimalistes.
+   ============================================ */
+
+/* ============================================================
+   TRÈS PETIT MOBILE (≤480px) — ~50 % des dimensions desktop
+   Extension du breakpoint mobile, footer row conservé
+   ============================================================ */
+@media (max-width: 480px) {
+  :root {
+    --sidebar-expanded-width:  calc(350px * 0.50); /* 175px */
+    --sidebar-collapsed-width: 30px;
+    --padding-panel:           7px;
+  }
+
+  /* ── SIDEBAR & STRUCTURE ── */
+  .sidebar-panel.expanded { width: var(--sidebar-expanded-width); }
+  .map-container.retracted {
+    margin-left: calc(var(--sidebar-expanded-width) - var(--sidebar-collapsed-width));
+  }
+  .app-footer { left: 0; }
+  .sidebar-panel.expanded ~ .map-container ~ .app-footer {
+    left: var(--sidebar-expanded-width);
+  }
+  .sidebar-content {
+    width: calc(var(--sidebar-expanded-width) - var(--sidebar-collapsed-width));
+  }
+  .tableau-resultats { left: 0; max-height: 120px; }
+  .sidebar-panel.expanded ~ .tableau-resultats {
+    left: var(--sidebar-expanded-width);
+  }
+
+  /* ── TOOLBAR ── */
+  .sidebar-toolbar { width: var(--sidebar-collapsed-width); padding: 4px 0; gap: 2px; }
+  .toolbar-icon { width: 18px; height: 18px; padding: 3px; margin: 1px 0; border-radius: 4px; top: 25px; }
+  .toolbar-icon img { width: 11px; height: 11px; }
+  .sidebar-toolbar .logo-inrap img { width: 16px; }
+
+  /* ── PANNEAUX ── */
+  .panel-header { font-size: 0.55rem; padding: 4px 7px 5px; min-height: 25px; }
+  .panel-body { padding: 6px; }
+  /* ── BOUTON FERMETURE PANNEAU (× 0.50) ── */
+  .close-panel-btn {
+    width:      15px;    /* 18px × 0.50 */
+    height:     12px;
+    font-size:  7px;    /* 14px × 0.50 */
+    top:        8px;    /* 15px × 0.50 → 7.5 → 8px */
+    right:      8px;
+    border-radius: 1px;
+  }
+
+  /* ── ONGLETS ── */
+  .couches-tabs { padding: 0 4px; gap: 2px; }
+  .couches-tab { padding: 4px 5px; font-size: 0.41rem; gap: 3px; }
+
+  /* ── FORMULAIRES ── */
+  .form-group { gap: 1px; margin-bottom: 4px; }
+  .form-group label { font-size: 0.38rem; }
+  .form-group input,
+  .form-group select,
+  .form-group input[type="text"],
+  .form-group input[list] { font-size: 0.40rem; padding: 2px 4px; height: 16px; }
+  .form-actions { gap: 3px; grid-template-columns: 1fr; margin-top: 4px; }
+  .btn-primary, .btn-secondary, .form-actions button {
+    padding: 2px 5px; font-size: 0.38rem; height: 16px; min-height: 16px;
+  }
+
+  /* ── BOUTON RECHERCHE ── */
+  .btn-recherche { padding: 2px 5px; font-size: 0.40rem; height: 16px; }
+  .frm-recherche { gap: 4px; }
+
+  /* ── AIDE ── */
+  .help-section { margin-bottom: 7px; }
+  .help-section h4 { font-size: 0.45rem; margin-bottom: 2px; }
+  .help-section li { font-size: 0.38rem; margin-bottom: 2px; line-height: 1.25; }
+
+  /* ── GÉOCODAGE ── */
+  .geocodage-container { gap: 5px; }
+  .geocodage input { padding: 3px 5px; font-size: 0.40rem; height: 24px; }
+  .geocodage button { width: 24px; height: 24px; }
+  .bouton-geocodage { width: 12px; height: 12px; }
+  .resultat-geocodage li { padding: 3px 5px; margin-bottom: 2px; font-size: 0.36rem; }
+
+  /* ── COUCHES ── */
+  .content-panel[data-panel-content="couches"] .panel-body { padding: 5px; gap: 4px; }
+  .layer-group-header { padding: 3px 5px; padding-right: 16px; gap: 3px; }
+  .group-title { font-size: 0.40rem; }
+  .group-checkbox { width: 10px; height: 10px; }
+  .group-checkbox::before { font-size: 7px; }
+  .group-toggle { font-size: 0.40rem; min-width: 6px; }
+  .group-toggle::before { font-size: 6px; }
+  .layer-item { padding: 3px 5px 3px 12px; gap: 2px; }
+  .layer-item label { font-size: 0.36rem; }
+  .layer-item input[type="checkbox"] { width: 10px; height: 10px; }
+  .layer-item input[type="checkbox"]::before { font-size: 7px; }
+  .opacity-label { font-size: 0.32rem; min-width: 25px; }
+  .opacity-slider { height: 2px; min-width: 50px; }
+  .opacity-slider::-webkit-slider-thumb { width: 7px; height: 7px; }
+  .opacity-value { font-size: 0.32rem; min-width: 13px; }
+  .layer-table-btn, .layer-delete-btn { font-size: 0.32rem; padding: 1px 3px; }
+
+  /* ── ÉDITION ── */
+  .edition-tools { gap: 4px; margin-bottom: 8px; }
+  .edit-tool { width: 20px; height: 20px; border-radius: 4px; }
+  .edit-tool img { width: 15px; height: 15px; }
+  .edit-tool.symbol-cross img { width: 9px; height: 9px; }
+  .edit-tool.symbol-modify img { width: 13px; height: 13px; }
+  .edition-info { padding: 7px; }
+  .edition-info p { font-size: 0.40rem; }
+  .edition-tool-btn { padding: 3px 5px; font-size: 0.36rem; min-height: 18px; }
+
+  /* ── NUMÉRISATION ENRICHIE — xs 480px ── */
+  .num-panel-body { gap: 5px; padding: 3px 5px 5px; }
+  .num-tools-grid { grid-template-columns: repeat(4, 1fr); gap: 3px; padding: 5px; }
+  .num-tool { padding: 4px 2px; min-height: 38px; border-radius: 4px; gap: 2px; }
+  .num-tool img, .num-tool svg { width: 13px; height: 13px; }
+  .num-tool span { font-size: 0.40rem; }
+  .num-info { padding: 5px 7px; }
+  .num-info-text { font-size: 0.52rem; }
+  .num-section-title { font-size: 0.52rem; padding: 4px 7px; }
+  .num-style-row { gap: 4px; }
+  .num-style-row label { font-size: 0.46rem; }
+  .num-style-row input[type="color"] { width: 24px; height: 20px; }
+  .num-style-row--range { width: 100%; }
+  .num-range-wrap { gap: 3px; width: 100%; min-width: 0; }
+  .num-range-wrap input[type="range"] { min-width: 0; width: 0; }
+  .num-range-val { font-size: 0.44rem; min-width: 24px; }
+  .num-drop-zone { padding: 8px 6px; gap: 4px; font-size: 0.44rem; }
+  .num-drop-icon { font-size: 1.1rem; }
+  .num-drop-zone span { font-size: 0.44rem; }
+  .num-export-btns { gap: 4px; }
+  .num-export-btn, .num-btn-danger { font-size: 0.48rem; padding: 4px 6px; }
+
+  /* ── EXPORT & POPUP ── */
+  .btn-export { padding: 5px 9px; font-size: 0.46rem; gap: 4px; }
+  .btn-export img { width: 9px; height: 10px; }
+  .popup { padding: 1px 8px; min-height: 60px; }
+  .popup-placeholder { padding: 12px 5px; font-size: 0.44rem; }
+  .tableauEl { font-size: 0.38rem; margin: 7px 0; }
+  .tableauEl td { padding: 4px 5px; }
+  .tableauEl .attr-label { font-size: 0.38rem; }
+  .popup-nav { padding: 2px 1px 3px; }
+  .popup-nav-label { font-size: 0.40rem; }
+  .popup-nav-btn { width: 13px; height: 13px; font-size: 0.50rem; }
+  .popup-nav-export {
+    width:  40px;   /* 80px × 0.50 */
+    height: 13px;   /* 26px × 0.50 */
+    padding: 1px 2px;
+    gap: 2px;
+    border-radius: 2px;
+    font-size: 0.36rem;   /* 0.72rem × 0.50 */
+  }
+  .popup-nav-export img {
+    width:  7px;    /* 14px × 0.50 */
+    height: 7px;
+  }
+
+  /* ── TABLEAU RÉSULTATS ── */
+  .tableau-resultats-header { padding: 2px 5px; min-height: 15px; gap: 5px; }
+  .tableau-resultats-titre { font-size: 0.40rem; }
+  .tableau-resultats-count { font-size: 0.38rem; }
+  .tableau-resultats-fermer { font-size: 0.50rem; padding: 1px 2px; }
+  .tableau-data { font-size: 0.38rem; }
+  .tableau-data th { padding: 3px 5px; font-size: 0.36rem; }
+  .tableau-data td { padding: 2px 5px; max-width: 100px; }
+  .tableau-vide { padding: 10px; font-size: 0.43rem; }
+
+  /* ── LÉGENDE ── */
+  .legend-group { margin-bottom: 3px; }
+  .legend-group-title { font-size: 0.39rem; padding: 3px 5px; gap: 3px; }
+  .legend-group-items { padding: 3px 5px; gap: 1px; }
+  .legend-item { gap: 5px; padding: 1px 0; }
+  .legend-symbol { width: 15px; }
+  .legend-icon-fa { width: 14px; height: 9px; font-size: 0.55rem; }
+  .legend-label { font-size: 0.41rem; }
+  .legend-label--couche { font-size: 0.41rem; }
+  .legend-empty { font-size: 0.43rem; padding: 12px 6px; }
+  .legend-content { padding: 4px; gap: 3px; }
+  .rapport-rendu-symbol { font-size: 5px; padding: 1px 3px; min-width: 14px; min-height: 9px; line-height: 2.5; }
+
+  /* ── ZOOM ── */
+  .zoom-btn { width: 15px; height: 15px; font-size: 12px; }
+
+  /* ── SCROLLBARS ── */
+  .resultat-geocodage::-webkit-scrollbar,
+  .panel-body::-webkit-scrollbar { width: 3px; }
+
+  /* ── FOOTER (row forcé, éléments compressés) ── */
+  .footer-content {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 2px;
+    justify-content: center;
+    align-items: center;
+    padding: 0 2px;
+  }
+  .echelle-container { gap: 2px; }
+  .echelle-label { font-size: 0.38rem; white-space: nowrap; }
+  .echelle-select {
+    font-size: 0.38rem;
+    height: 16px;
+    min-width: 60px;
+    max-width: 70px;
+  }
+  .coordonnees-container { gap: 2px; }
+  .projection-selector {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .projection-selector select {
+    font-size: 0.38rem;
+    height: 16px;
+    max-width: 80px;
+    min-width: 0;
+    width: 80px;
+  }
+  .affichage-coordonnee {
+    font-size: 0.38rem;
+    height: 16px;
+    min-width: 70px;
+    white-space: nowrap;
+  }
+}
+
+/* ============================================================
+   TRÈS TRÈS PETIT MOBILE (≤320px) — Galaxy S8, iPhone SE 1ère gen
+   Footer en row strict, tout compressé au maximum
+   ============================================================ */
+@media (max-width: 425px) {
+  /* ── FOOTER row strict ── */
+  .footer-content {
+    flex-wrap: nowrap;
+    gap: 1px;
+    padding: 0 1px;
+  }
+  .echelle-label { font-size: 0.32rem; }
+  .echelle-select {
+    font-size: 0.35rem;
+    height: 15px;
+    min-width: 50px;
+    max-width: 58px;
+  }
+  .coordonnees-container { gap: 1px; }
+  .projection-selector select {
+    font-size: 0.35rem;
+    height: 14px;
+    max-width: 68px;
+    width: 68px;
+  }
+  .affichage-coordonnee {
+    font-size: 0.38rem;
+    height: 14px;
+    min-width: 60px;
+  }
+
+  /* ── POPUP NAV (très petit mobile) ── */
+  .popup-nav { padding: 1px 1px 2px; gap: 2px; }
+  .popup-nav-label { font-size: 0.35rem; }
+  .popup-nav-btn {
+    width:  11px;
+    height: 11px;
+    font-size: 0.42rem;
+    border-radius: 1px;
+  }
+  .popup-nav-export {
+    width:  34px;
+    height: 11px;
+    padding: 1px;
+    gap: 1px;
+    border-radius: 1px;
+    font-size: 0.30rem;   /* minimum lisible */
+  }
+  .popup-nav-export img {
+    width:  6px;
+    height: 6px;
+  }
+
+  /* ── NUMÉRISATION — 320px : grille 3 colonnes, tout miniaturisé ── */
+  .num-panel-body { gap: 4px; padding: 2px 4px 4px; }
+  .num-tools-grid { grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 4px; }
+  .num-tool { padding: 3px 2px; min-height: 34px; border-radius: 3px; gap: 1px; }
+  .num-tool img, .num-tool svg { width: 11px; height: 11px; }
+  .num-tool span { font-size: 0.36rem; }
+  .num-info { padding: 4px 6px; }
+  .num-info-text { font-size: 0.46rem; }
+  .num-section-title { font-size: 0.46rem; padding: 3px 6px; }
+  .num-style-row label { font-size: 0.40rem; }
+  .num-style-row input[type="color"] { width: 20px; height: 16px; }
+  .num-style-row--range { width: 100%; }
+  .num-range-wrap { gap: 2px; width: 100%; min-width: 0; }
+  .num-range-wrap input[type="range"] { min-width: 0; width: 0; }
+  .num-range-val { font-size: 0.38rem; min-width: 20px; }
+  .num-drop-zone { padding: 6px 4px; gap: 3px; font-size: 0.38rem; }
+  .num-drop-icon { font-size: 0.9rem; }
+  .num-drop-zone span { font-size: 0.38rem; }
+  .num-export-btns { gap: 3px; }
+  .num-export-btn, .num-btn-danger { font-size: 0.40rem; padding: 3px 5px; }
+}
