@@ -990,7 +990,7 @@ function renderPopup(feature, total = 1, index = 0) {
 
   // --- Bouton export KML (toujours présent dans la nav) ---
   const exportBtnHtml = `<button class="popup-nav-export" id="popup-export-kml" title="Exporter en KML">
-    <img src="./symbols/export_kml.png" alt="export KML" /> Exporter
+    Exporter
   </button>`;
 
   // --- Barre de navigation ---
